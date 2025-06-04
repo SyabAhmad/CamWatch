@@ -1,13 +1,140 @@
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* CamWatch Brand Colors */
+  --camwatch-primary: #06b6d4;
+  --camwatch-secondary: #8b5cf6;
+  --camwatch-accent: #ec4899;
+
+  /* Gradient Colors */
+  --brand-blue-start: #0ea5e9;
+  --brand-blue-end: #3b82f6;
+  --brand-purple-start: #8b5cf6;
+  --brand-purple-end: #a855f7;
+  --brand-cyan-start: #06b6d4;
+  --brand-cyan-end: #0891b2;
+  --brand-emerald-start: #10b981;
+  --brand-emerald-end: #059669;
+  --brand-pink-start: #ec4899;
+  --brand-pink-end: #db2777;
+  --brand-orange-start: #f97316;
+  --brand-orange-end: #ea580c;
+  --brand-red-start: #ef4444;
+  --brand-red-end: #dc2626;
+  --brand-yellow-start: #eab308;
+  --brand-yellow-end: #ca8a04;
+
+  /* Background Colors */
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-light: #f8fafc;
+  --bg-glass: rgba(255, 255, 255, 0.1);
+
+  /* Custom Gradients */
+  --gradient-primary: linear-gradient(135deg, var(--brand-cyan-start), var(--brand-blue-end));
+  --gradient-secondary: linear-gradient(135deg, var(--brand-purple-start), var(--brand-pink-start));
+  --gradient-hero: linear-gradient(135deg, var(--bg-primary), #581c87, var(--bg-primary));
+  --gradient-feature: linear-gradient(135deg, var(--bg-light), #dbeafe);
+  --gradient-team: linear-gradient(135deg, #f9fafb, #dbeafe);
+  --gradient-contact: linear-gradient(135deg, var(--bg-primary), #581c87, var(--bg-primary));
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+@layer utilities {
+  .bg-gradient-primary {
+    background: var(--gradient-primary);
+  }
+  .bg-gradient-secondary {
+    background: var(--gradient-secondary);
+  }
+  .bg-gradient-hero {
+    background: var(--gradient-hero);
+  }
+  .bg-gradient-feature {
+    background: var(--gradient-feature);
+  }
+  .bg-gradient-team {
+    background: var(--gradient-team);
+  }
+  .bg-gradient-contact {
+    background: var(--gradient-contact);
+  }
+  
+  .text-gradient-primary {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  
+  .text-gradient-secondary {
+    background: var(--gradient-secondary);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+}
+
+/* Toast Animations */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOutRight {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+.my-toast {
+  animation: slideInRight 0.3s ease-out;
+}
+
+.my-toast[data-state="closed"] {
+  animation: slideOutRight 0.2s ease-in;
+}
+
+/* Lottie Animation Enhancements */
+.lottie-container {
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+}
+
+/* Enhanced glassmorphism for toasts */
+.sonner-toast {
+  backdrop-filter: blur(20px) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Custom scrollbar for toast container */
+.sonner-toaster::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sonner-toaster::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+.sonner-toaster::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+}
+
+.sonner-toaster::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
 }
