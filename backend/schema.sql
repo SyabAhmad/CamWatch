@@ -37,13 +37,13 @@ CREATE INDEX IF NOT EXISTS idx_cameras_location ON cameras(location);
 -- =================================
 CREATE TABLE IF NOT EXISTS detection_logs (
     id SERIAL PRIMARY KEY,
-    camera_id INTEGER NOT NULL REFERENCES cameras(id) ON DELETE CASCADE,
-    detection_type VARCHAR(50) NOT NULL, -- 'weapon', 'violence', 'intrusion', etc.
-    confidence DECIMAL(5,4) NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
-    image_path VARCHAR(500),
-    video_path VARCHAR(500),
-    detected_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    camera_id INTEGER REFERENCES cameras(id) ON DELETE SET NULL, -- Link to camera
+    detection_type VARCHAR(50) NOT NULL, -- e.g., 'weapon', 'violence', 'intrusion'
+    confidence REAL CHECK (confidence >= 0 AND confidence <= 1), -- Confidence score
+    detected_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, -- When it was detected
+    image_path VARCHAR(255), -- Optional: path to a stored image/frame
+    details TEXT, -- Optional: any other details in JSON or text
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP -- When the log entry was created
 );
 
 -- Create indexes for detection_logs table

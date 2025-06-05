@@ -55,11 +55,22 @@ class ApiService {
   }
 
   // Dashboard methods
-  async getDashboardStats() {
-    return this.request('/dashboard/stats');
+  async getDashboardStats() { // This was for admin, maybe rename or make generic
+    return this.request('/dashboard/stats'); // Assuming a general stats endpoint exists or will be made
   }
 
-  async getRecentDetections() {
+  async getDashboardCameras() {
+    return this.request('/dashboard/cameras');
+  }
+
+  async updateDashboardCameraStatus(cameraId, isActive) {
+    return this.request(`/dashboard/cameras/${cameraId}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ is_active: isActive }),
+    });
+  }
+
+  async getDashboardRecentDetections() { // Renamed for clarity from getRecentDetections
     return this.request('/dashboard/recent-detections');
   }
 

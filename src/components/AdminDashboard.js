@@ -1,10 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { showToast, camwatchToast } from '../utils/toast';
 import LottieLoader from './common/LottieLoader';
 import apiService from '../services/apiService';
+import { useAuth } from '../context/AuthContext'; // Adjust path as needed
 
 const AdminDashboard = () => {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  
   const [users, setUsers] = useState([]);
   const [showAddUser, setShowAddUser] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -93,6 +97,12 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleLogout = () => {
+    logout();
+    camwatchToast.info('You have been logged out.');
+    navigate('/login'); // Redirect to login page after logout
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
@@ -113,7 +123,7 @@ const AdminDashboard = () => {
               <h1 className="text-3xl font-bold text-gradient-primary">Admin Dashboard</h1>
               <p className="text-gray-300 mt-2">Manage CamWatch users and system settings</p>
             </div>
-            <div className="flex space-x-4">
+            <div className="flex items-center space-x-3">
               <Link 
                 to="/dashboard"
                 className="bg-gradient-to-r from-brand-purple-start to-brand-pink-start text-white px-6 py-2 rounded-2xl font-medium transition-all duration-300 hover:scale-105"
@@ -125,6 +135,12 @@ const AdminDashboard = () => {
                 className="bg-gradient-to-r from-brand-cyan-start to-brand-blue-end text-white px-6 py-2 rounded-2xl font-medium transition-all duration-300 hover:scale-105"
               >
                 Add New Staff
+              </button>
+              <button
+                onClick={handleLogout}
+                className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-150"
+              >
+                Logout
               </button>
             </div>
           </div>
