@@ -1,8 +1,14 @@
+<<<<<<< HEAD
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
 import apiService from '../services/apiService'; // Ensure this path is correct
 import { showToast, camwatchToast } from '../utils/toast'; // Ensure this path is correct
+=======
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { Link } from 'react-router-dom';
+>>>>>>> 7194d6824a069d5a22181bb85a7e296d02818c52
 
 const StaffDashboard = () => {
   const { user, logout } = useAuth();
@@ -10,6 +16,7 @@ const StaffDashboard = () => {
   const [recentDetections, setRecentDetections] = useState([]);
   const [loading, setLoading] = useState(true);
 
+<<<<<<< HEAD
   // Webcam specific state
   const [webcamStream, setWebcamStream] = useState(null);
   const [isWebcamOn, setIsWebcamOn] = useState(false);
@@ -86,11 +93,38 @@ const StaffDashboard = () => {
         setIsWebcamOn(webcamPlaceholderOnError.is_active);
       }
       setRecentDetections([]);
+=======
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      // Mock data - replace with actual API calls
+      const mockCameras = [
+        { id: 1, name: 'Camera 1', location: 'Main Entrance', status: 'online' },
+        { id: 2, name: 'Camera 2', location: 'Cafeteria', status: 'online' },
+        { id: 3, name: 'Camera 3', location: 'Hallway A', status: 'offline' },
+        { id: 4, name: 'Camera 4', location: 'Playground', status: 'online' }
+      ];
+
+      const mockDetections = [
+        { id: 1, type: 'weapon', confidence: 0.85, camera: 'Camera 1', time: '2 hours ago' },
+        { id: 2, type: 'violence', confidence: 0.78, camera: 'Camera 2', time: '4 hours ago' },
+        { id: 3, type: 'intrusion', confidence: 0.92, camera: 'Camera 4', time: '6 hours ago' }
+      ];
+
+      setCameras(mockCameras);
+      setRecentDetections(mockDetections);
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+>>>>>>> 7194d6824a069d5a22181bb85a7e296d02818c52
     } finally {
       setLoading(false);
     }
   };
 
+<<<<<<< HEAD
   const startWebcam = async (cameraToUpdate) => {
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
       try {
@@ -183,19 +217,30 @@ const StaffDashboard = () => {
     if (isWebcamOn && cameras.length > WEBCAM_CAMERA_INDEX && cameras[WEBCAM_CAMERA_INDEX]) {
         stopWebcam(cameras[WEBCAM_CAMERA_INDEX]); // Pass the camera object
     }
+=======
+  const handleLogout = () => {
+>>>>>>> 7194d6824a069d5a22181bb85a7e296d02818c52
     logout();
   };
 
   if (loading) {
     return (
+<<<<<<< HEAD
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center text-white">
         <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-8 border border-white/20 text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-cyan-start mx-auto mb-4"></div>
           Loading dashboard data...
+=======
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-8 border border-white/20">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-cyan-start mx-auto"></div>
+          <p className="text-white mt-4">Loading dashboard...</p>
+>>>>>>> 7194d6824a069d5a22181bb85a7e296d02818c52
         </div>
       </div>
     );
   }
+<<<<<<< HEAD
   
   // Display up to 4 cameras. If placeholder is used, it will be the first.
   // If DB cameras are fetched, they will be used.
@@ -203,25 +248,42 @@ const StaffDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+=======
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+>>>>>>> 7194d6824a069d5a22181bb85a7e296d02818c52
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gradient-primary">Staff Dashboard</h1>
+<<<<<<< HEAD
             <p className="text-gray-300 mt-2">Welcome back, {user?.name || 'Staff'}</p>
+=======
+            <p className="text-gray-300 mt-2">Welcome back, {user?.name}</p>
+>>>>>>> 7194d6824a069d5a22181bb85a7e296d02818c52
           </div>
           <div className="flex space-x-4">
             {user?.role === 'admin' && (
               <Link 
                 to="/admin"
+<<<<<<< HEAD
                 className="bg-gradient-to-r from-brand-purple-start to-brand-pink-start text-white px-6 py-2 rounded-2xl font-medium transition-all duration-300 hover:scale-105 shadow-lg"
+=======
+                className="bg-gradient-to-r from-brand-purple-start to-brand-pink-start text-white px-6 py-2 rounded-2xl font-medium transition-all duration-300 hover:scale-105"
+>>>>>>> 7194d6824a069d5a22181bb85a7e296d02818c52
               >
                 Admin Panel
               </Link>
             )}
             <button
               onClick={handleLogout}
+<<<<<<< HEAD
               className="bg-gradient-to-r from-brand-red-start to-brand-orange-start text-white px-6 py-2 rounded-2xl font-medium transition-all duration-300 hover:scale-105 shadow-lg"
+=======
+              className="bg-gradient-to-r from-brand-red-start to-brand-orange-start text-white px-6 py-2 rounded-2xl font-medium transition-all duration-300 hover:scale-105"
+>>>>>>> 7194d6824a069d5a22181bb85a7e296d02818c52
             >
               Logout
             </button>
@@ -230,6 +292,7 @@ const StaffDashboard = () => {
 
         {/* Camera Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+<<<<<<< HEAD
           {displayCameras.map((camera, index) => (
             <div key={camera.id} className="bg-white/10 backdrop-blur-lg rounded-3xl p-6 border border-white/20 shadow-xl flex flex-col justify-between">
               <div>
@@ -277,10 +340,31 @@ const StaffDashboard = () => {
 
         {/* Recent Detections */}
         <div className="bg-white/10 backdrop-blur-lg rounded-3xl border border-white/20 overflow-hidden shadow-xl">
+=======
+          {cameras.map((camera) => (
+            <div key={camera.id} className="bg-white/10 backdrop-blur-lg rounded-3xl p-6 border border-white/20">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-white">{camera.name}</h3>
+                <span className={`w-3 h-3 rounded-full ${
+                  camera.status === 'online' ? 'bg-green-500' : 'bg-red-500'
+                }`}></span>
+              </div>
+              <p className="text-gray-300 text-sm mb-4">{camera.location}</p>
+              <div className="bg-gray-800 rounded-2xl h-32 flex items-center justify-center">
+                <span className="text-4xl">📹</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Recent Detections */}
+        <div className="bg-white/10 backdrop-blur-lg rounded-3xl border border-white/20 overflow-hidden">
+>>>>>>> 7194d6824a069d5a22181bb85a7e296d02818c52
           <div className="p-6 border-b border-white/20">
             <h2 className="text-xl font-bold text-white">Recent Threat Detections</h2>
           </div>
           <div className="overflow-x-auto">
+<<<<<<< HEAD
             {recentDetections.length > 0 ? (
               <table className="w-full">
                 <thead className="bg-white/5">
@@ -319,6 +403,42 @@ const StaffDashboard = () => {
             ) : (
               <p className="text-center text-gray-400 py-10">No recent detections.</p>
             )}
+=======
+            <table className="w-full">
+              <thead className="bg-white/5">
+                <tr>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Type</th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Confidence</th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Camera</th>
+                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Time</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/10">
+                {recentDetections.map((detection) => (
+                  <tr key={detection.id} className="hover:bg-white/5">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium ${
+                        detection.type === 'weapon' ? 'bg-red-500/20 text-red-300' :
+                        detection.type === 'violence' ? 'bg-orange-500/20 text-orange-300' :
+                        'bg-yellow-500/20 text-yellow-300'
+                      }`}>
+                        {detection.type}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                      {(detection.confidence * 100).toFixed(1)}%
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                      {detection.camera}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                      {detection.time}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+>>>>>>> 7194d6824a069d5a22181bb85a7e296d02818c52
           </div>
         </div>
       </div>

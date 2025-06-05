@@ -55,6 +55,7 @@ class ApiService {
   }
 
   // Dashboard methods
+<<<<<<< HEAD
   async getDashboardStats() { // This was for admin, maybe rename or make generic
     return this.request('/dashboard/stats'); // Assuming a general stats endpoint exists or will be made
   }
@@ -71,6 +72,13 @@ class ApiService {
   }
 
   async getDashboardRecentDetections() { // Renamed for clarity from getRecentDetections
+=======
+  async getDashboardStats() {
+    return this.request('/dashboard/stats');
+  }
+
+  async getRecentDetections() {
+>>>>>>> 7194d6824a069d5a22181bb85a7e296d02818c52
     return this.request('/dashboard/recent-detections');
   }
 

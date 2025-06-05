@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+<<<<<<< HEAD
 import { Link, useNavigate } from 'react-router-dom';
 import { showToast, camwatchToast } from '../utils/toast';
 import LottieLoader from './common/LottieLoader';
@@ -9,6 +10,14 @@ const AdminDashboard = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   
+=======
+import { Link } from 'react-router-dom';
+import { showToast, camwatchToast } from '../utils/toast';
+import LottieLoader from './common/LottieLoader';
+import apiService from '../services/apiService';
+
+const AdminDashboard = () => {
+>>>>>>> 7194d6824a069d5a22181bb85a7e296d02818c52
   const [users, setUsers] = useState([]);
   const [showAddUser, setShowAddUser] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -97,12 +106,15 @@ const AdminDashboard = () => {
     }
   };
 
+<<<<<<< HEAD
   const handleLogout = () => {
     logout();
     camwatchToast.info('You have been logged out.');
     navigate('/login'); // Redirect to login page after logout
   };
 
+=======
+>>>>>>> 7194d6824a069d5a22181bb85a7e296d02818c52
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
@@ -123,7 +135,11 @@ const AdminDashboard = () => {
               <h1 className="text-3xl font-bold text-gradient-primary">Admin Dashboard</h1>
               <p className="text-gray-300 mt-2">Manage CamWatch users and system settings</p>
             </div>
+<<<<<<< HEAD
             <div className="flex items-center space-x-3">
+=======
+            <div className="flex space-x-4">
+>>>>>>> 7194d6824a069d5a22181bb85a7e296d02818c52
               <Link 
                 to="/dashboard"
                 className="bg-gradient-to-r from-brand-purple-start to-brand-pink-start text-white px-6 py-2 rounded-2xl font-medium transition-all duration-300 hover:scale-105"
@@ -136,12 +152,15 @@ const AdminDashboard = () => {
               >
                 Add New Staff
               </button>
+<<<<<<< HEAD
               <button
                 onClick={handleLogout}
                 className="bg-red-600 hover:bg-red-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-150"
               >
                 Logout
               </button>
+=======
+>>>>>>> 7194d6824a069d5a22181bb85a7e296d02818c52
             </div>
           </div>
         </div>
