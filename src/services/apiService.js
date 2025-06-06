@@ -12,6 +12,8 @@ class ApiService {
   // Generic request method
   async request(endpoint, options = {}) {
     const url = `${this.baseURL}${endpoint}`;
+    console.log("ApiService.request called:", { url, options });
+    
     const config = {
       headers: {
         'Content-Type': 'application/json',
@@ -21,18 +23,24 @@ class ApiService {
       ...options,
     };
 
+    // If using fetch, body must be a string for POST
+    if (config.body && typeof config.body !== 'string') {
+      config.body = JSON.stringify(config.body);
+    }
+
+    console.log("Fetch config:", { url, method: config.method, headers: config.headers });
+
     try {
+      console.log("Making fetch request...");
       const response = await fetch(url, config);
+      console.log("Fetch response received:", { status: response.status, ok: response.ok });
+      
       const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || `HTTP error! status: ${response.status}`);
-      }
-
+      console.log("Response data:", data);
       return data;
     } catch (error) {
-      console.error('API request failed:', error);
-      throw error;
+      console.error("Fetch error:", error);
+      return { success: false, message: 'Network error', error };
     }
   }
 

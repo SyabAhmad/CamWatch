@@ -21,3 +21,23 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+
+
+backend/__pycache__/
+backend/__pycache__/*
+backend/routes/__pycache__/
+backend/routes/__pycache__/*
+
+backend/llamavision/ggml-org_SmolVLM-500M-Instruct-GGUF_mmproj-SmolVLM-500M-Instruct-Q8_0.gguf
+/backend/llamavision/ggml-org_SmolVLM-500M-Instruct-GGUF_SmolVLM-500M-Instruct-Q8_0.gguf
+
+# Python cache files
+backend/*.pyc
+# Python virtual environment
+backend/venv/
+# Python cache directories
+backend/.pytest_cache/
+# Python bytecode files
+# Jupyter Notebook checkpoints
+backend/.ipynb_checkpoints/

@@ -3,8 +3,14 @@ from db_utils import get_db_connection
 from auth_utils import token_required # Assuming staff also need to be authenticated
 import psycopg2
 import psycopg2.extras
+import requests
+import os
+from dotenv import load_dotenv
+load_dotenv() 
 
 dashboard_bp = Blueprint('dashboard_bp', __name__)
+
+LLAMA_SERVER_URL = os.getenv("LLAMA_SERVER_URL", "http://localhost:8080/v1/chat/completions")
 
 @dashboard_bp.route('/cameras', methods=['GET'])
 @token_required
@@ -116,3 +122,53 @@ def get_dashboard_recent_detections(current_user):
     finally:
         if conn:
             conn.close()
+
+@dashboard_bp.route('/analyze-frame', methods=['POST'])
+@token_required
+def analyze_frame_route(current_user):
+    current_app.logger.info("Received /analyze-frame request")
+    data = request.get_json()
+    
+    if not data:
+        current_app.logger.warning("No JSON data received")
+        return jsonify({"success": False, "message": "No JSON data provided."}), 400
+    
+    image_b64 = data.get('image_b64')
+    current_app.logger.info(f"Image data length: {len(image_b64) if image_b64 else 0}")
+
+    if not image_b64:
+        return jsonify({"success": False, "message": "No image data provided."}), 400
+
+    # Prepare llama.cpp vision prompt
+    payload = {
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "just name things in the image. like if you see botle, say bottle, if weapon say gun/knife. no more then 4 words"},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}}
+                ]
+            }
+        ]
+    }
+
+    try:
+        current_app.logger.info(f"Sending request to llama.cpp at {LLAMA_SERVER_URL}")
+        response = requests.post(LLAMA_SERVER_URL, json=payload, timeout=60)
+        current_app.logger.info(f"Llama.cpp response: {response.status_code}")
+        
+        if response.ok:
+            result = response.json()
+            description = (
+                result.get('choices', [{}])[0]
+                .get('message', {})
+                .get('content', 'No description found.')
+            )
+            current_app.logger.info(f"Description extracted: {description}")
+            return jsonify({"success": True, "description": description}), 200
+        else:
+            current_app.logger.error(f"Llama.cpp error: {response.text}")
+            return jsonify({"success": False, "message": "Llama.cpp server error."}), 502
+    except Exception as e:
+        current_app.logger.error(f"Error contacting AI: {str(e)}")
+        return jsonify({"success": False, "message": f"Error contacting AI: {str(e)}"}), 500

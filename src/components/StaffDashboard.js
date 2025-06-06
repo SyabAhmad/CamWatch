@@ -17,15 +17,28 @@ const StaffDashboard = () => {
   const WEBCAM_CAMERA_INDEX = 0; // Designate the first camera for webcam
   const WEBCAM_PLACEHOLDER_ID = 'local-webcam-placeholder'; // Unique ID for placeholder
 
+  // AI Analysis state
+  const [aiDescription, setAiDescription] = useState('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const aiIntervalRef = useRef(null);
+  const aiCanvasRef = useRef(null);
+
   useEffect(() => {
     fetchDashboardData();
     return () => {
-      // Cleanup webcam stream if component unmounts
       if (webcamStream) {
         webcamStream.getTracks().forEach(track => track.stop());
       }
+      if (aiIntervalRef.current) {
+        clearInterval(aiIntervalRef.current);
+      }
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Add this useEffect to track state changes
+  useEffect(() => {
+    console.log("isWebcamOn changed to:", isWebcamOn);
+  }, [isWebcamOn]);
 
   const fetchDashboardData = async () => {
     setLoading(true);
@@ -100,9 +113,15 @@ const StaffDashboard = () => {
           webcamVideoRef.current.srcObject = stream;
         }
         setIsWebcamOn(true);
+        console.log("Webcam turned on");
         // Only update backend if it's not the placeholder
         if (cameraToUpdate && cameraToUpdate.id !== WEBCAM_PLACEHOLDER_ID) {
           updateCameraStatusInDB(cameraToUpdate.id, true);
+        }
+        // Start AI analysis interval
+        if (!aiIntervalRef.current) {
+          aiIntervalRef.current = setInterval(analyzeWebcamFrame, 5000); // every 5 seconds
+          console.log("AI interval started");
         }
       } catch (err) {
         console.error("Error accessing webcam:", err);
@@ -123,6 +142,12 @@ const StaffDashboard = () => {
       webcamVideoRef.current.srcObject = null;
     }
     setIsWebcamOn(false);
+    // Stop AI analysis interval
+    if (aiIntervalRef.current) {
+      clearInterval(aiIntervalRef.current);
+      aiIntervalRef.current = null;
+    }
+    setAiDescription('');
     // Only update backend if it's not the placeholder
     if (cameraToUpdate && cameraToUpdate.id !== WEBCAM_PLACEHOLDER_ID) {
       updateCameraStatusInDB(cameraToUpdate.id, false);
@@ -186,6 +211,70 @@ const StaffDashboard = () => {
     logout();
   };
 
+  const analyzeWebcamFrame = async () => {
+    console.log("analyzeWebcamFrame called");
+    
+    // Temporarily comment out isWebcamOn check
+    if (!webcamVideoRef.current || isAnalyzing) {
+      console.log("Early return:", { 
+        hasVideo: !!webcamVideoRef.current, 
+        isAnalyzing 
+      });
+      return;
+    }
+    
+    // Check if video is actually playing
+    const video = webcamVideoRef.current;
+    if (video.readyState < 2) { // HAVE_CURRENT_DATA
+      console.log("Video not ready, readyState:", video.readyState);
+      return;
+    }
+    
+    setIsAnalyzing(true);
+    console.log("Starting frame analysis...");
+
+    try {
+      // Create canvas and capture frame
+      if (!aiCanvasRef.current) {
+        aiCanvasRef.current = document.createElement('canvas');
+      }
+      const canvas = aiCanvasRef.current;
+      const video = webcamVideoRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // Get base64 image
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      const base64Image = dataUrl.split(',')[1];
+      
+      console.log("Frame captured, base64 length:", base64Image.length);
+      console.log("Making API request to /dashboard/analyze-frame...");
+
+      const res = await apiService.request('/dashboard/analyze-frame', {
+        method: 'POST',
+        body: JSON.stringify({ image_b64: base64Image }),
+      });
+      
+      console.log("API response received:", res);
+      
+      if (res.success && res.description) {
+        setAiDescription(res.description);
+        console.log("Description set:", res.description);
+      } else {
+        setAiDescription('No description.');
+        console.log("No description in response");
+      }
+    } catch (err) {
+      console.error("Error in analyzeWebcamFrame:", err);
+      setAiDescription('AI error.');
+    } finally {
+      setIsAnalyzing(false);
+      console.log("Frame analysis completed");
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center text-white">
@@ -225,6 +314,38 @@ const StaffDashboard = () => {
             >
               Logout
             </button>
+          </div>
+        </div>
+
+        {/* AI Real-Time Description Section - ADD THIS */}
+        <div className="mb-6">
+          <div className="bg-black/60 rounded-xl p-6 flex items-start space-x-4 shadow-lg border border-sky-700/30">
+            <div className="text-3xl">🤖</div>
+            <div className="flex-1">
+              <div className="flex items-center space-x-2 mb-2">
+                <h2 className="text-lg font-semibold text-sky-300">AI Live Vision Analysis</h2>
+                {isAnalyzing && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-sky-400"></div>
+                )}
+              </div>
+              <div className="text-white bg-gray-800/50 rounded-lg p-4 min-h-[80px] border border-gray-600">
+                {isWebcamOn ? (
+                  aiDescription || (
+                    <span className="text-gray-400 italic">
+                      {isAnalyzing ? "🔍 Analyzing current view..." : "⏳ Waiting for next analysis..."}
+                    </span>
+                  )
+                ) : (
+                  <span className="text-gray-400 italic">📹 Turn on webcam to see AI analysis</span>
+                )}
+              </div>
+              <div className="text-xs text-gray-400 mt-2 flex justify-between">
+                <span>Updates every 10 seconds • Powered by SmolVLM</span>
+                {aiDescription && (
+                  <span>Last updated: {new Date().toLocaleTimeString()}</span>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 

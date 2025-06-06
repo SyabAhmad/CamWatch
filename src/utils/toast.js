@@ -11,8 +11,8 @@ export const showToast = {
         borderRadius: '12px',
         backdropFilter: 'blur(10px)',
       },
-      duration: 4000,
-      ...options
+      duration: 3000,
+      ...options,
     });
   },
 
