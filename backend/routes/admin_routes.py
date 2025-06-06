@@ -133,16 +133,27 @@ def delete_user_route(current_admin_user, user_id_to_delete):
     try:
         conn = get_db_connection()
         with conn.cursor() as cur:
+            # Check if the user to delete exists and is not the current admin (double check, though covered above)
+            # This also helps confirm the user_id_to_delete is valid before attempting delete.
             cur.execute("SELECT id, role FROM users WHERE id = %s", (user_id_to_delete,))
             user_to_delete_record = cur.fetchone()
 
             if not user_to_delete_record:
                 return jsonify({"success": False, "message": "User not found."}), 404
 
+            # Optional: Add logic here if you want to prevent deletion of the *last* admin account
+            # For example, count admin users, if this is the last one, prevent deletion.
+            # cur.execute("SELECT COUNT(*) FROM users WHERE role = 'admin'")
+            # admin_count = cur.fetchone()[0]
+            # if user_to_delete_record[1] == 'admin' and admin_count <= 1:
+            #     return jsonify({"success": False, "message": "Cannot delete the last administrator account."}), 403
+
             cur.execute("DELETE FROM users WHERE id = %s", (user_id_to_delete,))
             
             if cur.rowcount == 0:
-                conn.rollback() 
+                # This case should ideally be caught by the "User not found" check above
+                # but serves as a fallback.
+                conn.rollback() # Rollback if no rows were affected unexpectedly
                 return jsonify({"success": False, "message": "User not found or already deleted."}), 404
             
             conn.commit()

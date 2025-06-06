@@ -25,7 +25,7 @@ export const showToast = {
         borderRadius: '12px',
         backdropFilter: 'blur(10px)',
       },
-      duration: 5000,
+      duration: 4000,
       ...options
     });
   },
@@ -181,7 +181,35 @@ export const camwatchToast = {
       icon: '🔒',
       duration: 6000
     });
-  }
+  },
+
+  error: (message, options = {}) => {
+    return toast.error(message, {
+      style: {
+        background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+        color: 'white',
+        border: '1px solid rgba(239, 68, 68, 0.3)',
+        borderRadius: '12px',
+        backdropFilter: 'blur(10px)',
+      },
+      duration: 4000,
+      ...options,
+    });
+  },
+
+  info: (message, options = {}) => {
+    return toast(message, {
+      style: {
+        background: 'linear-gradient(135deg, #38bdf8, #0ea5e9)',
+        color: 'white',
+        border: '1px solid rgba(59, 130, 246, 0.3)',
+        borderRadius: '12px',
+        backdropFilter: 'blur(10px)',
+      },
+      duration: 4000,
+      ...options,
+    });
+  },
 };
 
 // Export toast from sonner directly for advanced usage

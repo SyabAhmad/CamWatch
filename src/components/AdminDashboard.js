@@ -64,9 +64,9 @@ const AdminDashboard = () => {
           setStats(statsResponse.data);
         }
         
-        showToast.success(
-          `User ${!currentStatus ? 'activated' : 'deactivated'} successfully!`
-        );
+        // showToast.success(
+        //   `User ${!currentStatus ? 'activated' : 'deactivated'} successfully!`
+        // );
       }
     } catch (error) {
       console.error('Error toggling user status:', error);
@@ -254,7 +254,7 @@ const AdminDashboard = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex space-x-2">
-                        <button
+                        {/* <button
                           onClick={() => handleUserToggle(user.id, user.is_active)}
                           className={`px-3 py-1 rounded-full text-xs font-medium transition-all duration-300 ${
                             user.is_active
@@ -263,7 +263,7 @@ const AdminDashboard = () => {
                           }`}
                         >
                           {user.is_active ? 'Deactivate' : 'Activate'}
-                        </button>
+                        </button> */}
                         {user.role !== 'admin' && (
                           <button
                             onClick={() => handleDeleteUser(user.id)}

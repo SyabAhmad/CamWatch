@@ -6,22 +6,22 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from routes.auth import auth_bp
-from routes.admin_routes import admin_bp
-from routes.dashboard_routes import dashboard_bp # Import the new dashboard blueprint
+from routes.admin_routes import admin_bp   # <-- ADD THIS LINE
+from routes.dashboard_routes import dashboard_bp
 
 app = Flask(__name__)
 CORS(app) 
 
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'camwatch-secret-key-fallback')
 
-# Register blueprints
+# Register the auth_bp blueprint with a URL prefix
 app.register_blueprint(auth_bp, url_prefix='/api/auth')
-app.register_blueprint(admin_bp, url_prefix='/api/admin')
-app.register_blueprint(dashboard_bp, url_prefix='/api/dashboard') # Add URL prefix
+app.register_blueprint(admin_bp, url_prefix='/api/admin')   # <-- ADD THIS LINE
+app.register_blueprint(dashboard_bp, url_prefix='/api/dashboard')
 
 @app.route('/')
 def home():
-    return "CamWatch Backend is running! Auth: /api/auth/, Admin: /api/admin/, Dashboard: /api/dashboard/."
+    return "CamWatch Backend is running! Now with DB authentication under /api/auth/."
 
 if __name__ == '__main__':
     debug_mode = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
