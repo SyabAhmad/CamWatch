@@ -41,3 +41,9 @@ backend/.pytest_cache/
 # Python bytecode files
 # Jupyter Notebook checkpoints
 backend/.ipynb_checkpoints/
+
+backend/detection_images
+backend/detection_images/*
+
+backend/yolov8n.pt
+backend/yolov8s.pt
