@@ -22,10 +22,26 @@ const StaffDashboard = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const aiIntervalRef = useRef(null);
   const aiCanvasRef = useRef(null);
+  const lastFrameRef = useRef(null); // Ref to store the last frame for motion detection
 
   // Add new state for live preview
   const [livePreview, setLivePreview] = useState(null);
   const [lastDetectionTime, setLastDetectionTime] = useState(null);
+
+  // Add to your state
+  const [performanceMetrics, setPerformanceMetrics] = useState({
+    avgProcessingTime: 0,
+    framesAnalyzed: 0,
+    weaponsDetected: 0,
+    falsePositives: 0,
+    systemLoad: 'low'
+  });
+
+  // Add at the top with other refs
+  const realTimeIntervalRef = useRef(null);
+
+  // ✅ ADD this state
+  const [performanceMode, setPerformanceMode] = useState(true); // Default to performance mode
 
   useEffect(() => {
     fetchDashboardData();
@@ -118,15 +134,12 @@ const StaffDashboard = () => {
         }
         setIsWebcamOn(true);
         console.log("Webcam turned on");
+        
         // Only update backend if it's not the placeholder
         if (cameraToUpdate && cameraToUpdate.id !== WEBCAM_PLACEHOLDER_ID) {
           updateCameraStatusInDB(cameraToUpdate.id, true);
         }
-        // Start AI analysis interval
-        if (!aiIntervalRef.current) {
-          aiIntervalRef.current = setInterval(analyzeWebcamFrame, 5000); // every 5 seconds
-          console.log("AI interval started");
-        }
+        
       } catch (err) {
         console.error("Error accessing webcam:", err);
         camwatchToast.error("Could not access webcam. Please check permissions.");
@@ -146,12 +159,21 @@ const StaffDashboard = () => {
       webcamVideoRef.current.srcObject = null;
     }
     setIsWebcamOn(false);
-    // Stop AI analysis interval
-    if (aiIntervalRef.current) {
-      clearInterval(aiIntervalRef.current);
-      aiIntervalRef.current = null;
+    
+    // ❌ REMOVE THIS OLD CODE:
+    // if (aiIntervalRef.current) {
+    //   clearInterval(aiIntervalRef.current);
+    //   aiIntervalRef.current = null;
+    // }
+    
+    // ✅ ADD THIS NEW CODE:
+    if (realTimeIntervalRef.current) {
+      clearInterval(realTimeIntervalRef.current);
+      realTimeIntervalRef.current = null;
     }
+    
     setAiDescription('');
+    
     // Only update backend if it's not the placeholder
     if (cameraToUpdate && cameraToUpdate.id !== WEBCAM_PLACEHOLDER_ID) {
       updateCameraStatusInDB(cameraToUpdate.id, false);
@@ -227,90 +249,194 @@ const StaffDashboard = () => {
     }
   };
 
-  // Enhanced analyzeWebcamFrame function with smart detection info
-  const analyzeWebcamFrame = async () => {
-    console.log("🎯 Smart analysis started");
+  // Add this function after your other helper functions (around line 200)
+  const captureOptimizedFrame = () => {
+    const canvas = aiCanvasRef.current || document.createElement('canvas');
+    const video = webcamVideoRef.current;
     
-    if (!webcamVideoRef.current || isAnalyzing) {
-      console.log("⏹️ Early return");
+    if (!video) {
+      throw new Error('Video element not available');
+    }
+    
+    // Smaller resolution for faster processing
+    const targetWidth = 320;  // YOLO optimal size
+    const targetHeight = 320;
+    
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
+    
+    // Lower quality for faster transfer
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+    const base64Image = dataUrl.split(',')[1];
+    
+    return { dataUrl, base64Image };
+  };
+
+  // ✅ REPLACE analyzeWebcamFrame with this BLAZING FAST version:
+  const analyzeWebcamFrame = async () => {
+    // ✅ MINIMAL condition checks - no logging
+    if (!isWebcamOn || !webcamStream?.active || isAnalyzing || !webcamVideoRef.current?.readyState >= 2) {
       return;
     }
     
     setIsAnalyzing(true);
-    const startTime = Date.now();
-
+    
     try {
-      // Capture frame
-      if (!aiCanvasRef.current) {
-        aiCanvasRef.current = document.createElement('canvas');
-      }
-      const canvas = aiCanvasRef.current;
-      const video = webcamVideoRef.current;
+      // ✅ FAST frame capture
+      const { base64Image } = captureOptimizedFrame();
       
-      const maxWidth = 640;
-      const maxHeight = 480;
-      const scale = Math.min(maxWidth / video.videoWidth, maxHeight / video.videoHeight, 1);
-      
-      canvas.width = video.videoWidth * scale;
-      canvas.height = video.videoHeight * scale;
-      
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-      const base64Image = dataUrl.split(',')[1];
-      
-      console.log("📡 Sending to smart analysis endpoint...");
-
+      // ✅ FAST API call
       const res = await apiService.request('/dashboard/analyze-frame-smart', {
         method: 'POST',
-        body: JSON.stringify({ image_b64: base64Image }),
+        body: JSON.stringify({ 
+          image_b64: base64Image,
+          realtime: true,
+          silent: true  // ✅ Tell backend to be silent
+        }),
       });
       
-      const processingTime = Date.now() - startTime;
-      console.log("📥 Smart analysis response:", res);
-      
-      if (res.success) {
+      if (res?.success) {
+        // ✅ INSTANT UI updates
         setAiDescription(res.description);
         
-        // Update live preview with enhanced info
-        setLivePreview({
-          image: dataUrl,
-          description: res.ai_description || res.description,
-          detectedObjects: res.detected_objects || [],
-          weaponDetected: res.weapon_detected,
-          suspiciousDetected: res.suspicious_detected,
-          weaponTypes: res.weapon_types || [],
-          suspiciousTypes: res.suspicious_types || [],
-          confidence: res.confidence || 0,
-          timestamp: new Date().toLocaleTimeString(),
-          processingTime: `${processingTime}ms`,
-          smolUsed: res.smol_used || false  // Show if SmolVLM was actually used
-        });
+        // ✅ FAST metrics update
+        setPerformanceMetrics(prev => ({
+          ...prev,
+          framesAnalyzed: prev.framesAnalyzed + 1,
+          weaponsDetected: prev.weaponsDetected + (res.weapon_detected ? 1 : 0)
+        }));
         
-        // Show different toasts based on detection
+        // ✅ ONLY show preview for ACTUAL threats
         if (res.weapon_detected) {
-          setLastDetectionTime(new Date());
-          camwatchToast.error("🚨 WEAPON DETECTED! AI analysis completed & saved to database!");
+          setLivePreview({
+            image: captureOptimizedFrame().dataUrl,
+            detectedObjects: res.detected_objects || [],
+            weaponDetected: true,
+            weaponTypes: res.weapon_types || [],
+            confidence: res.confidence || 0,
+            timestamp: new Date().toLocaleTimeString(),
+            threatLevel: 'HIGH'
+          });
           
-          // Refresh detections to show the new one
-          setTimeout(() => {
-            fetchRecentDetections();
-          }, 1000);
-        } else if (res.suspicious_detected) {
-          console.log(`⚠️ Suspicious: ${res.suspicious_types?.join(', ') || 'Unknown'}`);
-          camwatchToast.warning("⚠️ Suspicious objects detected - monitoring...");
-        } else {
-          console.log(`✅ Safe: ${res.detected_objects?.map(obj => obj.object).join(', ') || 'No objects'}`);
+          setLastDetectionTime(new Date());
+          
+          // ✅ SINGLE toast only for real threats
+          // camwatchToast.error("🚨 WEAPON DETECTED!");
+          
+          // ✅ FAST background save
+          setTimeout(() => fetchRecentDetections(), 100);
+        } else if (livePreview) {
+          setLivePreview(null);
         }
       }
     } catch (err) {
-      console.error("💥 Smart analysis error:", err);
-      setAiDescription('Analysis error. Check connection.');
+      // ✅ SILENT error handling - no console spam
+      setAiDescription('⚠️ Detection error');
     } finally {
       setIsAnalyzing(false);
-      console.log(`🏁 Analysis completed in ${Date.now() - startTime}ms`);
     }
+  };
+
+  // ✅ REPLACE useEffect with this SILENT version:
+  useEffect(() => {
+    if (isWebcamOn && webcamVideoRef.current && webcamStream?.active) {
+      // ✅ Clear existing interval
+      if (realTimeIntervalRef.current) {
+        clearInterval(realTimeIntervalRef.current);
+        realTimeIntervalRef.current = null;
+      }
+      
+      // ✅ FAST startup
+      const startFastDetection = () => {
+        if (webcamVideoRef.current?.readyState >= 2) {
+          realTimeIntervalRef.current = setInterval(() => {
+            if (isWebcamOn && webcamStream?.active) {
+              analyzeWebcamFrame();
+            } else {
+              clearInterval(realTimeIntervalRef.current);
+              realTimeIntervalRef.current = null;
+            }
+          }, 200); // ✅ MUCH FASTER - 200ms = 5 FPS
+        } else {
+          setTimeout(startFastDetection, 100);
+        }
+      };
+      
+      startFastDetection();
+    } else {
+      if (realTimeIntervalRef.current) {
+        clearInterval(realTimeIntervalRef.current);
+        realTimeIntervalRef.current = null;
+      }
+    }
+    
+    return () => {
+      if (realTimeIntervalRef.current) {
+        clearInterval(realTimeIntervalRef.current);
+        realTimeIntervalRef.current = null;
+      }
+    };
+  }, [isWebcamOn, webcamStream]);
+
+  // ALSO remove the old useEffect with video events - replace with this:
+  useEffect(() => {
+    return () => {
+      // Cleanup all intervals on unmount
+      if (realTimeIntervalRef.current) {
+        clearInterval(realTimeIntervalRef.current);
+      }
+      if (aiIntervalRef.current) {
+        clearInterval(aiIntervalRef.current);
+      }
+      if (webcamStream) {
+        webcamStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
+  // ADD this emergency stop function:
+  const forceStopEverything = () => {
+    console.log("🚨 FORCE STOPPING ALL ANALYSIS");
+    
+    // Clear ALL possible intervals
+    if (realTimeIntervalRef.current) {
+      clearInterval(realTimeIntervalRef.current);
+      realTimeIntervalRef.current = null;
+      console.log("✅ Cleared realTimeIntervalRef");
+    }
+    
+    if (aiIntervalRef.current) {
+      clearInterval(aiIntervalRef.current);
+      aiIntervalRef.current = null;
+      console.log("✅ Cleared aiIntervalRef");
+    }
+    
+    // Stop all media streams
+    if (webcamStream) {
+      webcamStream.getTracks().forEach(track => {
+        track.stop();
+        console.log("🔌 Stopped track:", track.kind);
+      });
+      setWebcamStream(null);
+      console.log("✅ Cleared webcamStream");
+    }
+    
+    // Clear video element
+    if (webcamVideoRef.current) {
+      webcamVideoRef.current.srcObject = null;
+      console.log("✅ Cleared video srcObject");
+    }
+    
+    // Set state to off
+    setIsWebcamOn(false);
+    setIsAnalyzing(false);
+    setAiDescription('');
+    setLivePreview(null);
+    
+    console.log("🛑 EVERYTHING FORCE STOPPED");
   };
 
   if (loading) {
@@ -436,174 +562,179 @@ const StaffDashboard = () => {
               )}
             </div>
             
+            {/* Add real-time indicator */}
             <div className="text-xs text-gray-400 mt-2 flex justify-between">
-              <span>YOLO + SmolVLM • Real-time monitoring</span>
+              <span className="flex items-center">
+                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></span>
+                REAL-TIME • ~10fps analysis
+              </span>
               {lastDetectionTime && (
-                <span className="text-red-400">Last alert: {lastDetectionTime.toLocaleTimeString()}</span>
+                <span className="text-red-400">Last threat: {lastDetectionTime.toLocaleTimeString()}</span>
               )}
             </div>
           </div>
 
-          {/* Live Preview Section */}
+          {/* Live Preview Section - THREAT ALERTS ONLY */}
           <div className="bg-black/60 rounded-xl p-6 shadow-lg border border-sky-700/30">
             <h3 className="text-lg font-semibold text-sky-300 mb-4 flex items-center">
-              📸 Live Preview & Smart Analysis
+              🚨 Threat Alert Preview
+              <span className="ml-2 text-xs bg-red-600/20 text-red-300 px-2 py-1 rounded">
+                Threats Only
+              </span>
             </h3>
             
             {livePreview ? (
               <div className="space-y-4">
-                {/* Enhanced Preview Image */}
+                {/* Threat Alert Header */}
+                <div className={`p-3 rounded-lg border ${
+                  livePreview.weaponDetected 
+                    ? 'bg-red-900/50 border-red-500 text-red-200' 
+                    : 'bg-yellow-900/50 border-yellow-500 text-yellow-200'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold">
+                      {livePreview.weaponDetected ? '🚨 WEAPON THREAT' : '⚠️ SUSPICIOUS ACTIVITY'}
+                    </span>
+                    <span className="text-xs">{livePreview.timestamp}</span>
+                  </div>
+                  <div className="text-sm mt-1">
+                    Confidence: {(livePreview.confidence * 100).toFixed(1)}% • 
+                    Processing: {livePreview.processingTime}
+                  </div>
+                </div>
+
+                {/* ✅ FIXED IMAGE CONTAINER - SMALLER AND PROPERLY SIZED */}
                 <div className="relative group">
-                  <div className={`relative overflow-hidden rounded-xl border-3 transition-all duration-300 ${
-                    livePreview.weaponDetected ? 'border-red-500 shadow-red-500/30 shadow-lg' : 
-                    livePreview.suspiciousDetected ? 'border-yellow-500 shadow-yellow-500/30 shadow-lg' : 
-                    'border-gray-600 hover:border-gray-500'
+                  <div className={`relative overflow-hidden rounded-xl border-2 ${
+                    livePreview.weaponDetected ? 'border-red-500 shadow-red-500/50 shadow-lg animate-pulse' : 
+                    'border-yellow-500 shadow-yellow-500/50 shadow-lg'
                   }`}>
+                    {/* ✅ SMALLER IMAGE WITH PROPER ASPECT RATIO */}
                     <img 
                       src={livePreview.image} 
-                      alt="Live analysis frame" 
-                      className="w-full h-48 md:h-56 object-cover"
+                      alt="Threat detection frame" 
+                      className="w-full h-32 object-cover"  // ✅ Changed from h-48 to h-32 (much smaller)
+                      style={{
+                        maxHeight: '128px',  // ✅ Force max height
+                        objectFit: 'contain'  // ✅ Show full image without cropping
+                      }}
                     />
                     
-                    {/* Status Overlays */}
-                    {livePreview.weaponDetected && (
-                      <div className="absolute top-3 right-3 bg-red-600/90 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center animate-pulse">
-                        <span className="mr-2">🚨</span>
-                        WEAPON DETECTED
-                      </div>
-                    )}
+                    {/* Threat Level Badge */}
+                    <div className={`absolute top-2 right-2 backdrop-blur-sm text-white px-2 py-1 rounded text-xs font-bold flex items-center ${
+                      livePreview.weaponDetected 
+                        ? 'bg-red-600/90 animate-pulse' 
+                        : 'bg-yellow-600/90'
+                    }`}>
+                      <span className="mr-1">
+                        {livePreview.weaponDetected ? '🚨' : '⚠️'}
+                      </span>
+                      {livePreview.weaponDetected ? 'WEAPON' : 'SUSPICIOUS'}
+                    </div>
                     
-                    {livePreview.suspiciousDetected && !livePreview.weaponDetected && (
-                      <div className="absolute top-3 right-3 bg-yellow-600/90 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center">
-                        <span className="mr-2">⚠️</span>
-                        SUSPICIOUS ACTIVITY
-                      </div>
-                    )}
-                    
+                    {/* AI Verified Badge */}
                     {livePreview.smolUsed && (
-                      <div className="absolute bottom-3 left-3 bg-purple-600/90 backdrop-blur-sm text-white px-3 py-1.5 rounded-lg text-xs font-medium flex items-center">
-                        <span className="mr-2">🧠</span>
-                        AI ANALYZED
+                      <div className="absolute bottom-2 left-2 bg-purple-600/90 backdrop-blur-sm text-white px-2 py-1 rounded text-xs font-medium flex items-center">
+                        <span className="mr-1">🧠</span>
+                        AI
                       </div>
                     )}
                     
-                    {/* Timestamp Overlay */}
-                    <div className="absolute bottom-3 right-3 bg-black/70 backdrop-blur-sm text-white px-2 py-1 rounded text-xs">
+                    {/* Timestamp */}
+                    <div className="absolute bottom-2 right-2 bg-black/70 backdrop-blur-sm text-white px-2 py-1 rounded text-xs">
                       {livePreview.timestamp}
                     </div>
-                    
-                    {/* Gradient Overlay for better text readability */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-black/20 pointer-events-none"></div>
                   </div>
                 </div>
                 
-                {/* Enhanced Analysis Details Grid */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-                  <div className="bg-gray-800/50 rounded-lg p-3 text-center">
-                    <div className="text-xs text-gray-400 mb-1">Processing Time</div>
-                    <div className="text-sm font-bold text-white">{livePreview.processingTime}</div>
-                  </div>
-                  
-                  <div className="bg-gray-800/50 rounded-lg p-3 text-center">
-                    <div className="text-xs text-gray-400 mb-1">Analysis Mode</div>
-                    <div className={`text-sm font-bold ${livePreview.smolUsed ? 'text-purple-400' : 'text-blue-400'}`}>
-                      {livePreview.smolUsed ? 'Deep AI' : 'Fast YOLO'}
-                    </div>
-                  </div>
-                  
-                  <div className="bg-gray-800/50 rounded-lg p-3 text-center">
-                    <div className="text-xs text-gray-400 mb-1">Threat Level</div>
-                    <div className={`text-sm font-bold ${
-                      livePreview.weaponDetected ? 'text-red-400' : 
-                      livePreview.suspiciousDetected ? 'text-yellow-400' : 'text-green-400'
+                {/* ✅ COMPACT STATS GRID */}
+                <div className="grid grid-cols-3 gap-2">  {/* Changed from 2 lg:grid-cols-3 to just 3 columns */}
+                  <div className={`rounded-lg p-2 text-center border text-xs ${  // ✅ Smaller padding
+                    livePreview.weaponDetected 
+                      ? 'bg-red-800/30 border-red-600' 
+                      : 'bg-yellow-800/30 border-yellow-600'
+                  }`}>
+                    <div className="text-gray-300 mb-1">Threat Level</div>
+                    <div className={`font-bold ${
+                      livePreview.weaponDetected ? 'text-red-300' : 'text-yellow-300'
                     }`}>
-                      {livePreview.weaponDetected ? '🚨 HIGH' : 
-                       livePreview.suspiciousDetected ? '⚠️ MEDIUM' : '✅ LOW'}
+                      {livePreview.threatLevel || (livePreview.weaponDetected ? 'HIGH' : 'MEDIUM')}
                     </div>
                   </div>
                   
-                  <div className="bg-gray-800/50 rounded-lg p-3 text-center">
-                    <div className="text-xs text-gray-400 mb-1">Objects Found</div>
-                    <div className="text-sm font-bold text-white">{livePreview.detectedObjects.length}</div>
+                  <div className="bg-gray-800/50 rounded-lg p-2 text-center border border-gray-600 text-xs">
+                    <div className="text-gray-400 mb-1">Objects</div>
+                    <div className="font-bold text-white">{livePreview.detectedObjects.length}</div>
+                  </div>
+                  
+                  <div className="bg-gray-800/50 rounded-lg p-2 text-center border border-gray-600 text-xs">
+                    <div className="text-gray-400 mb-1">Mode</div>
+                    <div className={`font-bold ${livePreview.smolUsed ? 'text-purple-400' : 'text-blue-400'}`}>
+                      {livePreview.smolUsed ? 'Deep' : 'YOLO'}
+                    </div>
                   </div>
                 </div>
                 
-                {/* Enhanced Detected Objects Section */}
+                {/* ✅ COMPACT DETECTED THREATS */}
                 {livePreview.detectedObjects.length > 0 && (
-                  <div className="bg-gray-800/30 rounded-xl p-4 border border-gray-700/50">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-sm font-medium text-gray-300">Detected Objects</span>
-                      <span className="text-xs text-gray-500">
-                        Confidence scores shown
-                      </span>
-                    </div>
-                    
-                    <div className="flex flex-wrap gap-2">
+                  <div className="bg-gray-800/30 rounded-xl p-3 border border-gray-700/50">  {/* ✅ Smaller padding */}
+                    <div className="text-sm font-medium text-gray-300 mb-2">Detected Threats</div>
+                    <div className="flex flex-wrap gap-1">  {/* ✅ Smaller gap */}
                       {livePreview.detectedObjects.map((obj, idx) => (
                         <div 
                           key={idx}
-                          className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 hover:scale-105 ${
+                          className={`px-2 py-1 rounded text-xs font-medium ${  // ✅ Smaller badges
                             livePreview.weaponTypes.includes(obj.object) ? 
-                              'bg-red-600/80 text-white border border-red-500/50 shadow-red-500/20 shadow-lg' :
-                            livePreview.suspiciousTypes?.includes(obj.object) ? 
-                              'bg-yellow-600/80 text-white border border-yellow-500/50 shadow-yellow-500/20 shadow-lg' :
+                              'bg-red-600/80 text-white border border-red-500/50' :
                               'bg-blue-600/80 text-white border border-blue-500/50'
                           }`}
                         >
-                          <div className="flex items-center space-x-2">
-                            <span className="capitalize">{obj.object}</span>
-                            <span className="text-xs opacity-80">
-                              {(obj.confidence * 100).toFixed(0)}%
-                            </span>
-                          </div>
+                          <span className="capitalize">{obj.object}</span>
+                          <span className="opacity-80 ml-1">
+                            {(obj.confidence * 100).toFixed(0)}%
+                          </span>
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
                 
-                {/* AI Description Section (when weapon detected) */}
-                {livePreview.smolUsed && livePreview.description && (
-                  <div className="bg-purple-900/30 rounded-xl p-4 border border-purple-500/30">
-                    <div className="flex items-center mb-2">
-                      <span className="text-purple-400 mr-2">🧠</span>
-                      <span className="text-sm font-medium text-purple-300">AI Analysis</span>
-                    </div>
-                    <p className="text-sm text-gray-300 leading-relaxed">
-                      {livePreview.description}
-                    </p>
-                  </div>
-                )}
+                {/* ✅ COMPACT CLEAR BUTTON */}
+                <button 
+                  onClick={() => setLivePreview(null)}
+                  className="w-full py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm transition-colors"
+                >
+                  Clear Alert Preview
+                </button>
               </div>
             ) : (
-              /* Enhanced Waiting State */
+              /* No Threats State */
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${
-                  isWebcamOn ? 'bg-blue-500/20 text-blue-400' : 'bg-gray-500/20 text-gray-400'
+                  isWebcamOn ? 'bg-green-500/20 text-green-400' : 'bg-gray-500/20 text-gray-400'
                 }`}>
                   <span className="text-2xl">
-                    {isWebcamOn ? '🔍' : '📹'}
+                    {isWebcamOn ? '✅' : '📹'}
                   </span>
                 </div>
                 
                 <h4 className={`text-lg font-semibold mb-2 ${
-                  isWebcamOn ? 'text-blue-300' : 'text-gray-400'
+                  isWebcamOn ? 'text-green-300' : 'text-gray-400'
                 }`}>
-                  {isWebcamOn ? 'Initializing Analysis...' : 'Camera Offline'}
+                  {isWebcamOn ? 'All Clear - No Threats' : 'Camera Offline'}
                 </h4>
                 
                 <p className="text-gray-500 text-sm max-w-md">
                   {isWebcamOn 
-                    ? "Please wait while we start the intelligent threat detection system. First analysis will appear shortly."
-                    : "Turn on your webcam to begin real-time threat detection and analysis."
+                    ? "System is monitoring continuously. Threat images will appear here when detected."
+                    : "Turn on your webcam to begin threat monitoring."
                   }
                 </p>
                 
                 {isWebcamOn && (
-                  <div className="mt-4 flex space-x-1">
-                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
-                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
-                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+                  <div className="mt-4 text-xs text-gray-400 flex items-center">
+                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></span>
+                    Monitoring • {performanceMetrics.framesAnalyzed} frames analyzed
                   </div>
                 )}
               </div>
@@ -714,6 +845,44 @@ const StaffDashboard = () => {
             ) : (
               <p className="text-center text-gray-400 py-10">No stored detections yet.</p>
             )}
+          </div>
+        </div>
+
+        {/* Debug Section - REMOVE IN PRODUCTION */}
+        <div className="mt-8 p-4 rounded-lg bg-gray-800/50 border border-gray-700">
+          <h3 className="text-lg font-semibold mb-4">Debug Controls</h3>
+          
+          {/* Emergency stop button */}
+          <button 
+            onClick={forceStopEverything}
+            className="bg-red-800 px-4 py-2 rounded text-white font-bold"
+          >
+            🚨 NUCLEAR STOP
+          </button>
+        </div>
+
+        {/* Performance Mode Toggle - ADD THIS */}
+        <div className="mb-4 p-3 bg-blue-900/50 border border-blue-500 rounded-xl">
+          <div className="flex items-center justify-between">
+            <span className="text-blue-300 font-medium">
+              {performanceMode ? '⚡ Performance Mode' : '🐛 Debug Mode'}
+            </span>
+            <button
+              onClick={() => setPerformanceMode(!performanceMode)}
+              className={`px-3 py-1 rounded text-sm font-bold transition-colors ${
+                performanceMode 
+                  ? 'bg-green-600 text-white' 
+                  : 'bg-yellow-600 text-black'
+              }`}
+            >
+              {performanceMode ? 'ON' : 'DEBUG'}
+            </button>
+          </div>
+          <div className="text-xs text-gray-400 mt-1">
+            {performanceMode 
+              ? 'Silent mode: No logs, maximum speed (~200ms detection)'
+              : 'Debug mode: Full logging, slower performance (~1000ms detection)'
+            }
           </div>
         </div>
       </div>

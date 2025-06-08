@@ -47,3 +47,18 @@ backend/detection_images/*
 
 backend/yolov8n.pt
 backend/yolov8s.pt
+
+# find this __pycache__ folder and where it is, jus ignore it here
+
+# Ignore all __pycache__ directories
+backend/__pycache__/
+# Ignore all files in __pycache__ directories
+backend/__pycache__/*
+# Ignore all __pycache__ directories in the backend directory
+# Ignore all files in __pycache__ directories in the backend directory
+# Ignore all __pycache__ directories in the backend/routes directory
+backend/routes/__pycache__/ 
+
+backend/dataset/*
+
+runs/*
