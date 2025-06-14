@@ -3,16 +3,16 @@ import React from 'react';
 const Team = () => {
   const teamMembers = [
     {
-      name: 'Mike Johnson',
+      name: 'Ihsan ullah',
       role: 'Backend Developer',
       bio: 'Focus on security systems and database management with cloud expertise',
-      email: 'mike@camwatch.com',
+      email: 'Ihsan@camwatch.com',
       gradientClass: 'from-brand-emerald-start to-brand-emerald-end',
       bgGradientClass: 'from-emerald-50 to-teal-50'
     },
     {
-      name: 'Sarah Wilson',
-      role: 'UI/UX Designer',
+      name: 'Arbaz Khan',
+      role: 'UI/UX & Front-end Developer',
       bio: 'Creating intuitive and accessible user experiences for security systems',
       email: 'sarah@camwatch.com',
       gradientClass: 'from-brand-orange-start to-brand-red-start',

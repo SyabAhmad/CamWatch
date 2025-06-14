@@ -67,10 +67,28 @@ const StaffDashboard = () => {
     let fetchedCamerasData = [];
 
     try {
+      console.log('Fetching dashboard data...');
+      
+      // First try to check if backend is available
+      try {
+        const healthCheck = await apiService.healthCheck();
+        console.log('Health check response:', healthCheck);
+        if (!healthCheck.success) {
+          throw new Error('Backend health check failed');
+        }
+      } catch (healthError) {
+        console.error('Backend health check failed:', healthError);
+        camwatchToast.error('Backend server not available. Please check if the server is running.');
+        // Continue with fallback data instead of stopping completely
+      }
+      
       const [camerasRes, detectionsRes] = await Promise.all([
         apiService.getDashboardCameras(),
         apiService.getDashboardRecentDetections()
       ]);
+
+      console.log('Camera response:', camerasRes);
+      console.log('Detections response:', detectionsRes);
 
       // Process cameras data
       if (camerasRes.success && Array.isArray(camerasRes.data)) {
@@ -174,22 +192,34 @@ const StaffDashboard = () => {
         // Set up video element
         if (webcamVideoRef.current) {
           webcamVideoRef.current.srcObject = stream;
+          console.log('📹 Stream attached to video element');
           
           // Wait for video to actually load and start playing
           webcamVideoRef.current.onloadedmetadata = () => {
+            console.log('🎬 Video metadata loaded');
             webcamVideoRef.current.play().catch(err => {
               console.error('❌ Error playing video:', err);
             });
           };
           
-          webcamVideoRef.current.oncanplay = () => {
-            // Start weapon detection after video is ready to play
-            setTimeout(() => {
-              startWeaponDetection();
-            }, 500);
-          };
+          // More reliable detection start approach
+          // 1. Clear any existing detection loop first
+          if (detectionIntervalRef.current) {
+            clearInterval(detectionIntervalRef.current);
+            detectionIntervalRef.current = null;
+          }
           
-          webcamVideoRef.current.load();
+          // 2. Start detection immediately, no waiting
+          console.log('🔍 Starting weapon detection immediately from webcam start');
+          startWeaponDetection();
+          
+          // 3. Add a safety check that runs after the video has had time to initialize
+          setTimeout(() => {
+            if (webcamStateRef.current && !isAnalyzing) {
+              console.log('⏱️ Safety check: Ensuring detection is running');
+              startWeaponDetection();
+            }
+          }, 1500);
         }
         
         if (cameraToUpdate && cameraToUpdate.id !== WEBCAM_PLACEHOLDER_ID) {
@@ -255,42 +285,141 @@ const StaffDashboard = () => {
     // Clear any existing interval
     if (detectionIntervalRef.current) {
       clearInterval(detectionIntervalRef.current);
+      detectionIntervalRef.current = null;
     }
 
-    // Call once immediately
-    setTimeout(() => {
+    console.log('🔍 Weapon detection started');
+    
+    // First check - immediately analyze one frame to get things going
+    if (webcamVideoRef.current && webcamVideoRef.current.srcObject && !isAnalyzing) {
+      console.log('📸 Performing initial frame analysis');
       analyzeFrame();
+    }
+
+    // Use requestAnimationFrame for smoother performance
+    let lastCaptureTime = 0;
+    const CAPTURE_INTERVAL = 2500; // 2.5 seconds between captures
+    
+    const captureLoop = (timestamp) => {
+      if (!webcamStateRef.current || !webcamVideoRef.current) {
+        console.log('⛔ Capture loop exited - webcam state is off or ref missing');
+        return; // Stop the loop if webcam is off
+      }
       
-      // Then set up regular interval
-      detectionIntervalRef.current = setInterval(analyzeFrame, 3000); // Every 3 seconds
+      // Check if enough time has passed since last capture
+      if (timestamp - lastCaptureTime >= CAPTURE_INTERVAL && !isAnalyzing) {
+        console.log(`🔄 Time for new capture: ${timestamp - lastCaptureTime}ms elapsed`);
+        lastCaptureTime = timestamp;
+        analyzeFrame();
+      }
       
-    }, 1000); // Wait 1 second before first call
+      // Continue the loop as long as webcam is on
+      if (webcamStateRef.current) {
+        requestAnimationFrame(captureLoop);
+      }
+    };
+    
+    // Start the capture loop
+    requestAnimationFrame(captureLoop);
+    console.log('🔄 RequestAnimationFrame loop started');
+    
+    // Set flag to indicate detection is running
+    detectionIntervalRef.current = true;
+  };
+
+  // Helper function to check frame quality before sending to backend
+  const hasGoodFrameQuality = (imageData) => {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => {
+        // Create a small canvas for analysis
+        const canvas = document.createElement('canvas');
+        canvas.width = 50;
+        canvas.height = 50;
+        const ctx = canvas.getContext('2d');
+        
+        // Draw image at low resolution for quick analysis
+        ctx.drawImage(img, 0, 0, 50, 50);
+        const imageData = ctx.getImageData(0, 0, 50, 50);
+        
+        // Calculate brightness
+        let brightness = 0;
+        let pixels = 0;
+        const data = imageData.data;
+        
+        for (let i = 0; i < data.length; i += 4) {
+          // Standard luminance formula
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+          brightness += (0.299 * r + 0.587 * g + 0.114 * b);
+          pixels++;
+        }
+        
+        // Get average brightness (0-255)
+        const avgBrightness = brightness / pixels;
+        
+        // Basic image quality check
+        const isGoodQuality = avgBrightness > 40 && avgBrightness < 220; // Not too dark, not too bright
+        
+        resolve(isGoodQuality);
+      };
+      img.src = imageData;
+    });
   };
 
   const analyzeFrame = async () => {
     // Skip if not ready or already analyzing
-    if (!webcamVideoRef.current || !webcamVideoRef.current.srcObject || isAnalyzing) {
+    if (!webcamVideoRef.current) {
+      console.log('⚠️ analyzeFrame: video ref is null');
+      return;
+    }
+    
+    if (!webcamVideoRef.current.srcObject) {
+      console.log('⚠️ analyzeFrame: video srcObject is null');
+      return;
+    }
+    
+    if (isAnalyzing) {
+      console.log('⚠️ analyzeFrame: already analyzing');
       return;
     }
 
     setIsAnalyzing(true);
+    console.log('📸 Starting frame analysis...');
 
     try {
-      // Capture frame
+      // Capture and enhance frame
       const canvas = document.createElement('canvas');
       const video = webcamVideoRef.current;
       
-      canvas.width = 320;
-      canvas.height = 320;
+      // Use 416x416 resolution - better for YOLO models (multiples of 32)
+      canvas.width = 416;
+      canvas.height = 416;
       
       const ctx = canvas.getContext('2d');
+      ctx.filter = 'contrast(1.2)';
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      const isGoodQuality = await hasGoodFrameQuality(dataUrl);
+      
+      if (!isGoodQuality) {
+        console.log('⚠️ Skipping low quality frame');
+        setIsAnalyzing(false);
+        return;
+      }
+      
       const base64Image = dataUrl.split(',')[1];
       
-      // Send to backend for analysis
+      console.log('📤 Sending frame for analysis, size:', base64Image.length);
+      
+      // Verify API endpoint
+      console.log('🌐 API URL:', `${apiService.baseURL}/dashboard/analyze-frame`);
+      console.log('🔑 Auth header present:', !!apiService.getAuthHeaders().Authorization);
+      
       const res = await apiService.analyzeFrame(base64Image);
+      console.log('📥 Analysis response:', res);
 
       if (res?.success) {
         if (res.weapon_detected) {
@@ -598,14 +727,32 @@ const StaffDashboard = () => {
                 )}
               </div>
               
-              {/* Camera Control */}
-              <button
-                onClick={() => toggleWebcam(selectedCamera)}
-                className={`mt-4 w-full py-3 px-4 rounded-xl font-semibold transition-all duration-300 text-lg
-                  ${isWebcamOn ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'} text-white shadow-md`}
-              >
-                {isWebcamOn ? 'Turn Off Webcam' : 'Turn On Webcam'}
-              </button>
+              {/* Camera Control - Single button approach */}
+              <div className="mt-4">
+                <button
+                  onClick={() => toggleWebcam(selectedCamera)}
+                  className={`w-full py-3 px-4 rounded-xl font-semibold transition-all duration-300 text-lg
+                    ${isWebcamOn ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'} text-white shadow-md`}
+                  title={isWebcamOn ? "Turn off webcam and stop detection" : "Turn on webcam and start detection"}
+                >
+                  {isWebcamOn ? '📴 Turn Off Camera & Detection' : '📲 Turn On Camera & Detection'}
+                </button>
+                
+                {/* Debug info - only shown if there's a problem */}
+                {isWebcamOn && !detectionIntervalRef.current && (
+                  <div className="mt-2 text-center">
+                    <button
+                      onClick={() => {
+                        console.log('🔄 Manually restarting detection');
+                        startWeaponDetection();
+                      }}
+                      className="text-xs text-blue-400 hover:text-blue-300"
+                    >
+                      Detection not working? Click here to restart
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

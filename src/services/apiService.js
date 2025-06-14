@@ -85,6 +85,9 @@ class ApiService {
   // Add this new method
   async analyzeFrame(imageBase64) {
     try {
+      console.log(`Analyzing frame. Image data length: ${imageBase64.length}`);
+      console.log(`Auth headers present: ${!!this.getAuthHeaders().Authorization}`);
+      
       const response = await fetch(`${this.baseURL}/dashboard/analyze-frame`, {
         method: 'POST',
         headers: {
@@ -94,10 +97,27 @@ class ApiService {
         body: JSON.stringify({ image_b64: imageBase64 })
       });
       
-      return await response.json();
+      console.log('Frame analysis response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Analysis error (${response.status}):`, errorText);
+        return { 
+          success: false, 
+          message: `Server error: ${response.status} ${response.statusText}`,
+          details: errorText
+        };
+      }
+      
+      const data = await response.json();
+      return data;
     } catch (error) {
       console.error('Error analyzing frame:', error);
-      return { success: false, message: 'Network error analyzing frame' };
+      return { 
+        success: false, 
+        message: 'Network error analyzing frame', 
+        error: error.toString() 
+      };
     }
   }
 
@@ -157,6 +177,10 @@ class ApiService {
   // Health check
   async healthCheck() {
     return this.request('/health');
+  }
+
+  async getLatestDetection() {
+    return this.request('/dashboard/latest-detection');
   }
 }
 
