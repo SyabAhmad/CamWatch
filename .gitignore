@@ -62,3 +62,5 @@ backend/routes/__pycache__/
 backend/dataset/*
 
 runs/*
+
+backend/static/detections/*

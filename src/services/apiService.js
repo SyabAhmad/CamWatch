@@ -82,6 +82,25 @@ class ApiService {
     return this.request('/dashboard/recent-detections');
   }
 
+  // Add this new method
+  async analyzeFrame(imageBase64) {
+    try {
+      const response = await fetch(`${this.baseURL}/dashboard/analyze-frame`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...this.getAuthHeaders()
+        },
+        body: JSON.stringify({ image_b64: imageBase64 })
+      });
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Error analyzing frame:', error);
+      return { success: false, message: 'Network error analyzing frame' };
+    }
+  }
+
   // Admin methods
   async getAdminStats() {
     return this.request('/admin/stats');
