@@ -15,27 +15,22 @@ from concurrent.futures import ThreadPoolExecutor
 
 load_dotenv()
 
+# Remove all the console logging to improve performance
 dashboard_bp = Blueprint('dashboard_bp', __name__)
 
 # Global thread pool for parallel processing
 thread_pool = ThreadPoolExecutor(max_workers=2)
 
-# Global model cache
-yolo_model = None
-model_lock = threading.Lock()
+# Global model variable that persists across requests
+_MODEL = None
 
 def get_yolo_model():
     """Get cached YOLO model - load only once"""
-    global yolo_model
-    if yolo_model is None:
-        with model_lock:
-            if yolo_model is None:  # Double-check after acquiring lock
-                current_app.logger.info("🔄 Loading YOLO model for the first time...")
-                # Load model with appropriate weights
-                yolo_model = YOLO(r'H:\Code\Final Year Projectsss\CamWatch\code\runs\detect\train3\weights\best.pt')
-                current_app.logger.info("✅ YOLO model loaded successfully")
-    
-    return yolo_model
+    global _MODEL
+    if _MODEL is None:
+        # Load model with appropriate weights - use absolute path to be safe
+        _MODEL = YOLO(r'H:\Code\Final Year Projectsss\CamWatch\code\runs\detect\train3\weights\best.pt')
+    return _MODEL
 
 # Weapon classes from your trained model
 WEAPON_CLASSES = {
@@ -50,17 +45,19 @@ WEAPON_CLASSES = {
     8: 'sword'  # This was missing!
 }
 
-# Add class-specific confidence thresholds for better accuracy
+# Lower the thresholds to improve detection rates
+
+# Adjusted thresholds based on detection logs
 CLASS_THRESHOLDS = {
-    0: 0.35,  # automatic rifle
-    1: 0.35,  # granade launcher 
-    2: 0.40,  # knife
-    3: 0.35,  # machine gun
-    4: 0.45,  # pistol
-    5: 0.35,  # rocket launcher
-    6: 0.40,  # shotgun
-    7: 0.40,  # sniper
-    8: 0.50,  # sword - higher threshold to reduce false positives
+    0: 0.30,  # automatic rifle
+    1: 0.30,  # granade launcher 
+    2: 0.35,  # knife
+    3: 0.30,  # machine gun
+    4: 0.25,  # pistol - lowered from 0.45 to 0.25
+    5: 0.30,  # rocket launcher
+    6: 0.35,  # shotgun
+    7: 0.35,  # sniper
+    8: 0.40,  # sword - lowered from 0.50 to 0.40
 }
 
 @dashboard_bp.route('/cameras', methods=['GET'])
@@ -164,66 +161,48 @@ def get_dashboard_recent_detections(current_user):
 @dashboard_bp.route('/analyze-frame', methods=['POST'])
 @token_required
 def analyze_frame_route(current_user):
-    current_app.logger.info("🔍 analyze-frame endpoint called")
-    
     data = request.get_json()
-    current_app.logger.info(f"📥 Request data keys: {list(data.keys()) if data else 'None'}")
     
     if not data or 'image_b64' not in data:
-        current_app.logger.error("❌ No image data provided")
         return jsonify({"success": False, "message": "No image data provided."}), 400
 
     image_b64 = data.get('image_b64')
-    current_app.logger.info(f"📸 Image data length: {len(image_b64)} chars")
     
     try:
         # Decode image
-        current_app.logger.info("🔧 Decoding image...")
         image_data = base64.b64decode(image_b64)
         nparr = np.frombuffer(image_data, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
         if image is None:
-            current_app.logger.error("❌ Invalid image data")
             return jsonify({"success": False, "message": "Invalid image data."}), 400
-        
-        current_app.logger.info(f"✅ Image decoded successfully: {image.shape}")
         
         # Resize for faster processing
         image = cv2.resize(image, (320, 320))
-        current_app.logger.info("✅ Image resized to 320x320")
         
-        # Run YOLO detection - use cached model
-        model = get_yolo_model()  # This now returns the cached model
-        current_app.logger.info("🔍 Running YOLO detection...")
-        results = model(image, conf=0.25, verbose=False, save=False)
-        current_app.logger.info("✅ YOLO detection completed")
+        # Get the pre-loaded model
+        model = get_yolo_model()
+        
+        # Run detection with lower confidence threshold
+        results = model(image, conf=0.20, verbose=False, save=False)
         
         # Analyze results
         return analyze_weapon_detection(results, image_data)
         
     except Exception as e:
-        current_app.logger.error(f"💥 Error analyzing frame: {e}")
-        import traceback
-        current_app.logger.error(f"💥 Traceback: {traceback.format_exc()}")
         return jsonify({"success": False, "message": f"Analysis error: {e}"}), 500
 
 def analyze_weapon_detection(results, image_data):
     """Weapon detection analysis with optimized thresholds"""
-    current_app.logger.info("🔍 Starting weapon detection analysis...")
-    
     detected_weapons = []
     weapon_detected = False
     highest_confidence = 0.0
     
     for result in results:
-        current_app.logger.info(f"📊 Processing result with {len(result.boxes) if result.boxes is not None else 0} detections")
         if result.boxes is not None:
             for box in result.boxes:
                 class_id = int(box.cls)
                 confidence = float(box.conf)
-                
-                current_app.logger.info(f"🎯 Detection: class_id={class_id}, confidence={confidence:.3f}")
                 
                 # Check if it's a weapon with adequate confidence
                 if class_id in WEAPON_CLASSES and confidence >= CLASS_THRESHOLDS.get(class_id, 0.25):
@@ -235,13 +214,8 @@ def analyze_weapon_detection(results, image_data):
                         'weapon': weapon_name,
                         'confidence': round(confidence, 3)
                     })
-                    
-                    current_app.logger.warning(f"🚨 WEAPON DETECTED: {weapon_name} ({confidence:.3f})")
-                else:
-                    current_app.logger.info(f"ℹ️ Non-weapon detection: class_id={class_id}")
     
     if weapon_detected:
-        current_app.logger.warning(f"🚨 Final result: {len(detected_weapons)} weapons detected")
         # Save detection in background
         thread_pool.submit(save_weapon_detection, image_data, detected_weapons, highest_confidence)
         
@@ -253,7 +227,6 @@ def analyze_weapon_detection(results, image_data):
             "message": f"🚨 WEAPON DETECTED: {', '.join([w['weapon'] for w in detected_weapons])}"
         }), 200
     else:
-        current_app.logger.info("✅ No weapons detected")
         return jsonify({
             "success": True,
             "weapon_detected": False,

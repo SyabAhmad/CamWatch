@@ -1,16 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import apiService from '../services/apiService';
 import { showToast, camwatchToast } from '../utils/toast';
 
 const StaffDashboard = () => {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [cameras, setCameras] = useState([]);
   const [recentDetections, setRecentDetections] = useState([]);
   const [riskyDetections, setRiskyDetections] = useState([]); // New state for risky detections
   const [loading, setLoading] = useState(true);
-
+  const [selectedCamera, setSelectedCamera] = useState(null);
+  
   // Webcam state
   const [webcamStream, setWebcamStream] = useState(null);
   const [isWebcamOn, setIsWebcamOn] = useState(false);
@@ -47,6 +50,18 @@ const StaffDashboard = () => {
     }
   };
 
+  // Parse camera ID from URL if present
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const cameraId = params.get('camera');
+    if (cameraId && cameras.length > 0) {
+      const cam = cameras.find(c => c.id === cameraId);
+      if (cam) {
+        setSelectedCamera(cam);
+      }
+    }
+  }, [location.search, cameras]);
+
   const fetchDashboardData = async () => {
     setLoading(true);
     let fetchedCamerasData = [];
@@ -72,12 +87,26 @@ const StaffDashboard = () => {
           is_active: false,
         };
         setCameras([webcamPlaceholder]);
+        setSelectedCamera(webcamPlaceholder);
         setIsWebcamOn(webcamPlaceholder.is_active);
       } else {
         setCameras(fetchedCamerasData);
-        if (fetchedCamerasData.length > WEBCAM_CAMERA_INDEX) {
-          const webcamCam = fetchedCamerasData[WEBCAM_CAMERA_INDEX];
-          setIsWebcamOn(webcamCam.is_active);
+        // Get camera from URL or default to first one
+        const params = new URLSearchParams(location.search);
+        const cameraId = params.get('camera');
+        
+        if (cameraId) {
+          const cam = fetchedCamerasData.find(c => c.id === cameraId);
+          if (cam) {
+            setSelectedCamera(cam);
+            setIsWebcamOn(cam.is_active);
+          } else {
+            setSelectedCamera(fetchedCamerasData[0]);
+            setIsWebcamOn(fetchedCamerasData[0].is_active);
+          }
+        } else {
+          setSelectedCamera(fetchedCamerasData[0]);
+          setIsWebcamOn(fetchedCamerasData[0].is_active);
         }
       }
 
@@ -112,6 +141,22 @@ const StaffDashboard = () => {
       setRiskyDetections([]);
     } finally {
       setLoading(false);
+    }
+  };
+  
+  // Add a function to handle camera selection
+  const handleCameraChange = (e) => {
+    const cameraId = e.target.value;
+    const camera = cameras.find(cam => cam.id === cameraId);
+    if (camera) {
+      setSelectedCamera(camera);
+      // Update URL with selected camera
+      navigate(`/staff?camera=${cameraId}`, { replace: true });
+      
+      // If webcam was on, turn it off
+      if (isWebcamOn) {
+        stopWebcam(cameras.find(c => c.id === selectedCamera?.id));
+      }
     }
   };
 
@@ -334,8 +379,8 @@ const StaffDashboard = () => {
   };
 
   const handleLogout = () => {
-    if (isWebcamOn && cameras.length > WEBCAM_CAMERA_INDEX && cameras[WEBCAM_CAMERA_INDEX]) {
-      stopWebcam(cameras[WEBCAM_CAMERA_INDEX]);
+    if (isWebcamOn && selectedCamera) {
+      stopWebcam(selectedCamera);
     }
     logout();
   };
@@ -348,7 +393,7 @@ const StaffDashboard = () => {
         
         // Update risky detections as well
         const risky = detectionsRes.data
-          .filter(d => d.confidence > 0.7) 
+          .filter(d => d.confidence > 0.4) 
           .slice(0, 7);
         setRiskyDetections(risky);
       }
@@ -378,6 +423,12 @@ const StaffDashboard = () => {
             <p className="text-gray-300 mt-2">Welcome back, {user?.name || 'Staff'}</p>
           </div>
           <div className="flex space-x-4">
+            <Link 
+              to="/cameras"
+              className="bg-gradient-to-r from-brand-blue-start to-brand-cyan-start text-white px-6 py-2 rounded-2xl font-medium transition-all duration-300 hover:scale-105 shadow-lg"
+            >
+              View All Cameras
+            </Link>
             {user?.role === 'admin' && (
               <Link 
                 to="/admin"
@@ -392,6 +443,32 @@ const StaffDashboard = () => {
             >
               Logout
             </button>
+          </div>
+        </div>
+        
+        {/* Camera Selector */}
+        <div className="mb-6">
+          <label htmlFor="camera-select" className="block text-sm font-medium text-gray-300 mb-2">
+            Select Camera
+          </label>
+          <div className="relative">
+            <select
+              id="camera-select"
+              value={selectedCamera?.id || ''}
+              onChange={handleCameraChange}
+              className="block w-full bg-white/10 border border-white/20 rounded-xl py-2 pl-4 pr-10 text-white focus:outline-none focus:ring-2 focus:ring-brand-blue-start appearance-none"
+            >
+              {cameras.map(camera => (
+                <option key={camera.id} value={camera.id}>
+                  {camera.name} - {camera.location}
+                </option>
+              ))}
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-white">
+              <svg className="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </div>
           </div>
         </div>
 
@@ -488,7 +565,7 @@ const StaffDashboard = () => {
             {/* Camera Card */}
             <div className="bg-white/10 backdrop-blur-lg rounded-3xl p-6 border border-white/20 shadow-xl">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-semibold text-white">{cameras[0].name}</h3>
+                <h3 className="text-xl font-semibold text-white">{selectedCamera?.name || 'Camera'}</h3>
                 <div className="flex items-center space-x-2">
                   <span className={`w-4 h-4 rounded-full ${
                     isWebcamOn ? 'bg-green-500 animate-pulse' : 'bg-red-500'
@@ -498,7 +575,7 @@ const StaffDashboard = () => {
                   </span>
                 </div>
               </div>
-              <p className="text-gray-300 text-sm mb-4">{cameras[0].location}</p>
+              <p className="text-gray-300 text-sm mb-4">{selectedCamera?.location || 'Location'}</p>
               
               {/* Debug info */}
               <div className="text-xs text-gray-400 mb-2">
@@ -523,7 +600,7 @@ const StaffDashboard = () => {
               
               {/* Camera Control */}
               <button
-                onClick={() => toggleWebcam(cameras[0])}
+                onClick={() => toggleWebcam(selectedCamera)}
                 className={`mt-4 w-full py-3 px-4 rounded-xl font-semibold transition-all duration-300 text-lg
                   ${isWebcamOn ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'} text-white shadow-md`}
               >
@@ -532,7 +609,7 @@ const StaffDashboard = () => {
             </div>
           </div>
         </div>
-
+        
         {/* High Risk Detections Row */}
         <div className="mb-8">
           <h2 className="text-xl font-bold text-white mb-4">🔥 High Risk Detections</h2>

@@ -8,6 +8,7 @@ import LandingPage from './components/LandingPage';
 import Login from './components/Login';
 import AdminDashboard from './components/AdminDashboard';
 import StaffDashboard from './components/StaffDashboard';
+import ViewAllCameras from './pages/ViewAllCameras';
 import { ProtectedRoute, AdminRoute, StaffRoute, PublicRoute } from './components/ProtectedRoute';
 import './App.css';
 
@@ -54,6 +55,12 @@ function App() {
               <StaffRoute>
                 <StaffDashboard />
               </StaffRoute>
+            } />
+            
+            <Route path="/cameras" element={
+              <ProtectedRoute>
+                <ViewAllCameras />
+              </ProtectedRoute>
             } />
             
             {/* Public pages with header/footer */}

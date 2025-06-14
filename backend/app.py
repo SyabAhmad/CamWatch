@@ -8,7 +8,7 @@ load_dotenv()
 
 from routes.auth import auth_bp
 from routes.admin_routes import admin_bp
-from routes.dashboard_routes import dashboard_bp
+from routes.dashboard_routes import dashboard_bp, get_yolo_model
 
 app = Flask(__name__)
 CORS(app) 
@@ -31,6 +31,21 @@ def home():
 @app.route('/api/health')
 def health():
     return jsonify({"status": "healthy", "message": "CamWatch Backend is running!"})
+
+@app.route('/api/load-model')
+def load_model_route():
+    # Load model on first request
+    get_yolo_model()
+    return jsonify({"status": "success", "message": "YOLO model loaded successfully"})
+
+# Or, simply preload the model on app startup (no decorator needed)
+with app.app_context():
+    try:
+        app.logger.info("🔄 Pre-loading YOLO model during app startup...")
+        get_yolo_model()
+        app.logger.info("✅ YOLO model loaded successfully!")
+    except Exception as e:
+        app.logger.error(f"❌ Error loading model: {e}")
 
 if __name__ == '__main__':
     debug_mode = os.getenv('FLASK_DEBUG', 'True').lower() == 'true'  # Default to True for debugging
