@@ -253,7 +253,7 @@ const StaffDashboard = () => {
     }
 
     let lastCaptureTime = 0;
-    const CAPTURE_INTERVAL = 2500;
+    const CAPTURE_INTERVAL = 1500;
     
     const captureLoop = (timestamp) => {
       if (!webcamStateRef.current || !webcamVideoRef.current) {
@@ -361,7 +361,7 @@ const StaffDashboard = () => {
       if (res?.success) {
         if (res.weapon_detected) {
           const weaponList = res.weapons.map(w => w.weapon).join(', ');
-          
+
           // Update status with save information
           let statusMessage = `🚨 WEAPON DETECTED: ${weaponList}`;
           if (res.saved_to_recent) {
@@ -562,18 +562,29 @@ const StaffDashboard = () => {
               </div>
             </div>
 
-            {/* Last Detection Preview */}
+            {/* Last Detection Preview */}  
             {lastDetection && (
               <div className="bg-red-900/50 border border-red-500 rounded-xl p-6">
                 <h3 className="text-lg font-semibold text-red-300 mb-4">🚨 Latest Weapon Detection</h3>
                 <div className="space-y-4">
-                  <div>
-                    <img 
-                      src={lastDetection.image} 
-                      alt="Detected weapon" 
-                      className="w-full h-48 object-cover rounded-lg border border-red-500"
-                    />
-                  </div>
+                  {/* Conditionally render the image or a warning message */}
+                  {detectionStatus?.includes('WEAPON DETECTED') ? (
+                    <div className="bg-red-800/50 rounded-lg p-4 text-center">
+                      <div className="text-4xl text-red-200 mb-2">🚨</div>
+                      <div className="text-white font-semibold text-lg">Threat Detected!</div>
+                      <div className="text-sm text-red-200 mt-2">
+                        Detected Weapons: {lastDetection.weapons.map(w => w.weapon).join(', ')}
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      {/* <img 
+                        src={lastDetection.image} 
+                        alt="Detected weapon" 
+                        className="w-full h-48 object-cover rounded-lg border border-red-500"
+                      /> */}
+                    </div>
+                  )}
                   <div className="space-y-3">
                     <div className="bg-red-800/50 rounded-lg p-3">
                       <div className="text-sm text-red-200">Detected Weapons:</div>

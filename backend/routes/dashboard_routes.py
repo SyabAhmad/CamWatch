@@ -68,22 +68,22 @@ WEAPON_CLASSES = {
 
 # Update the CLASS_THRESHOLDS - make sword much stricter and pistol more sensitive
 CLASS_THRESHOLDS = {
-    0: 0.25,  # automatic rifle
-    1: 0.25,  # granade launcher 
-    2: 0.35,  # knife - stricter
-    3: 0.25,  # machine gun
-    4: 0.18,  # pistol - MORE SENSITIVE (this should catch pistols better)
-    5: 0.30,  # rocket launcher
-    6: 0.28,  # shotgun
-    7: 0.30,  # sniper
+    0: 0.30,  # automatic rifle
+    1: 0.30,  # granade launcher
+    2: 0.40,  # knife - stricter
+    3: 0.30,  # machine gun
+    4: 0.20,  # pistol - MORE SENSITIVE (this should catch pistols better)
+    5: 0.35,  # rocket launcher
+    6: 0.30,  # shotgun
+    7: 0.35,  # sniper
     8: 0.75,  # sword - MUCH STRICTER (was 0.60, now 0.75)
 }
 
 # Add weapon-specific confidence boost logic
 WEAPON_CONFIDENCE_BOOSTS = {
-    4: 1.15,  # pistol gets 15% confidence boost
-    2: 0.95,  # knife gets slight penalty
-    8: 0.85,  # sword gets significant penalty
+    4: 1.20,  # pistol gets 20% confidence boost
+    2: 0.90,  # knife gets slight penalty
+    8: 0.80,  # sword gets significant penalty
 }
 
 RECENT_DETECTIONS = {}  # Store recent detections for each class
@@ -443,44 +443,44 @@ def analyze_weapon_detection(results, image_data):
 @token_required
 def analyze_frame_route(current_user):
     data = request.get_json()
-    
+
     if not data or 'image_b64' not in data:
         return jsonify({"success": False, "message": "No image data provided."}), 400
 
     image_b64 = data.get('image_b64')
-    
+
     try:
         # Decode image
         image_data = base64.b64decode(image_b64)
         nparr = np.frombuffer(image_data, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        
+
         if image is None:
             return jsonify({"success": False, "message": "Invalid image data."}), 400
-        
+
         # Resize to optimal YOLO detection size (multiple of 32)
         image = cv2.resize(image, (416, 416))
-        
+
         # Apply image enhancements
         image = cv2.normalize(image, None, 0, 255, cv2.NORM_MINMAX)
-        
+
         # Optimize contrast
         alpha = 1.2  # contrast control
         beta = 10    # brightness control
         image = cv2.convertScaleAbs(image, alpha=alpha, beta=beta)
-        
+
         # Run YOLO detection with optimized parameters
         model = get_yolo_model()
-        
-        results = model(image, 
+
+        results = model(image,
                       conf=0.20,        # Lower base threshold
                       iou=0.45,         # Intersection over Union threshold
                       max_det=20,       # Maximum detections
                       verbose=False)
-        
+
         # Analyze results (pass original image_data for storage)
         return analyze_weapon_detection(results, image_data)
-        
+
     except Exception as e:
         current_app.logger.error(f"Analysis error: {e}")
         return jsonify({"success": False, "message": f"Analysis error: {e}"}), 500
