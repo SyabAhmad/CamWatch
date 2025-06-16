@@ -63,8 +63,8 @@ class ApiService {
   }
 
   // Dashboard methods
-  async getDashboardStats() { // This was for admin, maybe rename or make generic
-    return this.request('/dashboard/stats'); // Assuming a general stats endpoint exists or will be made
+  async getDashboardStats() {
+    return this.request('/dashboard/stats');
   }
 
   async getDashboardCameras() {
@@ -78,11 +78,7 @@ class ApiService {
     });
   }
 
-  async getDashboardRecentDetections() { // Renamed for clarity from getRecentDetections
-    return this.request('/dashboard/recent-detections');
-  }
-
-  // Add this new method
+  // Frame analysis method (only detection, no storage)
   async analyzeFrame(imageBase64) {
     try {
       console.log(`Analyzing frame. Image data length: ${imageBase64.length}`);
@@ -176,11 +172,45 @@ class ApiService {
 
   // Health check
   async healthCheck() {
-    return this.request('/health');
+    try {
+      const response = await fetch(`${this.baseURL}/health`, {
+        method: 'GET',
+        headers: this.getAuthHeaders(),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Health check failed:', error);
+      return { success: false, message: 'Server unavailable', error };
+    }
   }
 
-  async getLatestDetection() {
-    return this.request('/dashboard/latest-detection');
+  // New methods for recent detections
+  async getRecentDetections() {
+    return this.request('/dashboard/recent-detections');
+  }
+
+  async getDetectionDescription(detectionId) {
+    return this.request(`/dashboard/detection/${detectionId}/describe`, {
+      method: 'POST',
+    });
+  }
+
+  async createDetectionReport(detectionId) {
+    return this.request(`/dashboard/detection/${detectionId}/report`, {
+      method: 'POST',
+    });
+  }
+
+  async alertSecurity(detectionId) {
+    return this.request(`/dashboard/detection/${detectionId}/alert`, {
+      method: 'POST',
+    });
   }
 }
 

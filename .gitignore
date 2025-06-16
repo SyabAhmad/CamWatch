@@ -64,3 +64,4 @@ backend/dataset/*
 runs/*
 
 backend/static/detections/*
+backend/static/*
