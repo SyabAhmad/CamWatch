@@ -28,22 +28,57 @@ const AdminDashboard = () => {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      // Use direct methods instead of admin.getUsers()
+      console.log('Fetching admin dashboard data...');
+      
+      // Check if we have a valid token first
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.error('No token found, redirecting to login');
+        navigate('/login');
+        return;
+      }
+
       const [usersResponse, statsResponse] = await Promise.all([
-        apiService.getUsers(),        // Instead of apiService.admin.getUsers()
-        apiService.getAdminStats()    // Instead of apiService.admin.getStats()
+        apiService.getUsers(),
+        apiService.getAdminStats()
       ]);
 
+      console.log('Users response:', usersResponse);
+      console.log('Stats response:', statsResponse);
+
       if (usersResponse.success) {
-        setUsers(usersResponse.data);
+        setUsers(usersResponse.data || []);
+      } else {
+        console.error('Failed to fetch users:', usersResponse.message);
+        if (usersResponse.message?.includes('expired') || usersResponse.message?.includes('401')) {
+          camwatchToast.error('Session expired. Please login again.');
+          logout();
+          navigate('/login');
+          return;
+        }
       }
 
       if (statsResponse.success) {
-        setStats(statsResponse.data);
+        setStats(statsResponse.data || {
+          totalStaff: 0,
+          activeStaff: 0,
+          totalCameras: 0,
+          activeCameras: 0,
+          recentDetections: 0,
+          totalDetections: 0
+        });
+      } else {
+        console.error('Failed to fetch stats:', statsResponse.message);
       }
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
-      camwatchToast.networkError();
+      if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+        camwatchToast.error('Session expired. Please login again.');
+        logout();
+        navigate('/login');
+      } else {
+        camwatchToast.error('Failed to load dashboard data');
+      }
     } finally {
       setLoading(false);
     }

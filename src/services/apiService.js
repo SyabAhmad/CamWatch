@@ -6,6 +6,7 @@ class ApiService {
   // Get auth headers
   getAuthHeaders() {
     const token = localStorage.getItem('token');
+    console.log('Token from localStorage:', token ? 'Present' : 'Missing'); // Debug log
     return token ? { 'Authorization': `Bearer ${token}` } : {};
   }
 
@@ -23,6 +24,9 @@ class ApiService {
       ...options,
     };
 
+    // Debug: Log the authorization header
+    console.log("Authorization header:", config.headers.Authorization);
+
     // If using fetch, body must be a string for POST
     if (config.body && typeof config.body !== 'string') {
       config.body = JSON.stringify(config.body);
@@ -34,6 +38,14 @@ class ApiService {
       console.log("Making fetch request...");
       const response = await fetch(url, config);
       console.log("Fetch response received:", { status: response.status, ok: response.ok });
+      
+      // Handle 401 specifically
+      if (response.status === 401) {
+        console.error("401 Unauthorized - Token may be expired");
+        localStorage.removeItem('token'); // Clear invalid token
+        window.location.href = '/login'; // Redirect to login
+        return { success: false, message: 'Session expired. Please login again.' };
+      }
       
       const data = await response.json();
       console.log("Response data:", data);
@@ -196,6 +208,7 @@ class ApiService {
   }
 
   async getDetectionDescription(detectionId) {
+    // FIX: Use the correct endpoint
     return this.request(`/dashboard/detection/${detectionId}/describe`, {
       method: 'POST',
     });

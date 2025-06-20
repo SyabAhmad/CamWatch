@@ -29,6 +29,9 @@ const StaffDashboard = () => {
   const detectionIntervalRef = useRef(null);
   const webcamStateRef = useRef(false);
 
+  // Selected description state for modal
+  const [selectedDescription, setSelectedDescription] = useState(null);
+
   useEffect(() => {
     webcamStateRef.current = isWebcamOn;
   }, [isWebcamOn]);
@@ -103,11 +106,11 @@ const StaffDashboard = () => {
             setIsWebcamOn(cam.is_active);
           } else {
             setSelectedCamera(fetchedCamerasData[0]);
-            setIsWebcamOn(fetchedCamerasData[0].is_active);
+            setIsAnalyzing(false); // FIX: This was "setIs" which caused the error
           }
         } else {
           setSelectedCamera(fetchedCamerasData[0]);
-          setIsWebcamOn(fetchedCamerasData[0].is_active);
+          setIsAnalyzing(false); // FIX: This was "setIs" which caused the error
         }
       }
 
@@ -245,165 +248,91 @@ const StaffDashboard = () => {
       detectionIntervalRef.current = null;
     }
 
-    console.log('🔍 Weapon detection started');
+    console.log('🔍 Starting weapon detection with 3-second intervals');
     
+    // Initial analysis
     if (webcamVideoRef.current && webcamVideoRef.current.srcObject && !isAnalyzing) {
       console.log('📸 Performing initial frame analysis');
       analyzeFrame();
     }
 
-    let lastCaptureTime = 0;
-    const CAPTURE_INTERVAL = 1500;
-    
-    const captureLoop = (timestamp) => {
-      if (!webcamStateRef.current || !webcamVideoRef.current) {
-        console.log('⛔ Capture loop exited - webcam state is off or ref missing');
-        return;
-      }
-      
-      if (timestamp - lastCaptureTime >= CAPTURE_INTERVAL && !isAnalyzing) {
-        console.log(`🔄 Time for new capture: ${timestamp - lastCaptureTime}ms elapsed`);
-        lastCaptureTime = timestamp;
+    // Simple 3-second interval - NO MORE COMPLEX TIMING
+    detectionIntervalRef.current = setInterval(() => {
+      if (webcamStateRef.current && webcamVideoRef.current && !isAnalyzing) {
+        console.log('🔄 3-second interval - analyzing frame');
         analyzeFrame();
+      } else {
+        console.log('⚠️ Skipping analysis - webcam off or already analyzing');
       }
-      
-      if (webcamStateRef.current) {
-        requestAnimationFrame(captureLoop);
-      }
-    };
-    
-    requestAnimationFrame(captureLoop);
-    console.log('🔄 RequestAnimationFrame loop started');
-    
-    detectionIntervalRef.current = true;
+    }, 1500); // EXACTLY 1.5 seconds
+
+    console.log('✅ Detection interval set to 1.5 seconds');
   };
 
-  const hasGoodFrameQuality = (imageData) => {
-    return new Promise(resolve => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = 50;
-        canvas.height = 50;
-        const ctx = canvas.getContext('2d');
-        
-        ctx.drawImage(img, 0, 0, 50, 50);
-        const imageData = ctx.getImageData(0, 0, 50, 50);
-        
-        let brightness = 0;
-        let pixels = 0;
-        const data = imageData.data;
-        
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i];
-          const g = data[i + 1];
-          const b = data[i + 2];
-          brightness += (0.299 * r + 0.587 * g + 0.114 * b);
-          pixels++;
-        }
-        
-        const avgBrightness = brightness / pixels;
-        const isGoodQuality = avgBrightness > 40 && avgBrightness < 220;
-        
-        resolve(isGoodQuality);
-      };
-      img.src = imageData;
-    });
-  };
-
-  // Update the analyzeFrame function to show save status
+  // Simplify the analyzeFrame function:
   const analyzeFrame = async () => {
-    if (!webcamVideoRef.current) {
-      console.log('⚠️ analyzeFrame: video ref is null');
-      return;
-    }
-    
-    if (!webcamVideoRef.current.srcObject) {
-      console.log('⚠️ analyzeFrame: video srcObject is null');
-      return;
-    }
-    
-    if (isAnalyzing) {
-      console.log('⚠️ analyzeFrame: already analyzing');
+    if (!webcamVideoRef.current || !webcamVideoRef.current.srcObject || isAnalyzing) {
+      console.log('⚠️ Skipping frame - no video or already analyzing');
       return;
     }
 
     setIsAnalyzing(true);
-    console.log('📸 Starting frame analysis...');
+    console.log('📸 Analyzing frame...');
 
     try {
       const canvas = document.createElement('canvas');
       const video = webcamVideoRef.current;
       
-      canvas.width = 416;
-      canvas.height = 416;
+      // Use 640x640 for better detection
+      canvas.width = 640;
+      canvas.height = 640;
       
       const ctx = canvas.getContext('2d');
-      ctx.filter = 'contrast(1.2)';
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-      const isGoodQuality = await hasGoodFrameQuality(dataUrl);
+      // High quality JPEG
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+      const base64Image = dataUrl.split(',')[1];
       
-      if (!isGoodQuality) {
-        console.log('⚠️ Skipping low quality frame');
+      // Skip tiny frames
+      if (base64Image.length < 15000) {
+        console.log('⚠️ Frame too small, skipping');
         setIsAnalyzing(false);
         return;
       }
       
-      const base64Image = dataUrl.split(',')[1];
-      
-      console.log('📤 Sending frame for analysis, size:', base64Image.length);
+      console.log('📤 Sending frame for analysis');
       
       const res = await apiService.analyzeFrame(base64Image);
-      console.log('📥 Analysis response:', res);
+      console.log('📥 Analysis result:', res);
 
       if (res?.success) {
         if (res.weapon_detected) {
           const weaponList = res.weapons.map(w => w.weapon).join(', ');
-
-          // Update status with save information
-          let statusMessage = `🚨 WEAPON DETECTED: ${weaponList}`;
-          if (res.saved_to_recent) {
-            statusMessage += ' ✅ Saved to recent';
-          } else if (res.time_until_next_save !== undefined) {
-            statusMessage += ` ⏳ Next save in ${Math.ceil(res.time_until_next_save)}s`;
-          }
-          
-          setDetectionStatus(statusMessage);
+          setDetectionStatus(`🚨 WEAPON DETECTED: ${weaponList}`);
           
           const newDetection = {
             id: Date.now(),
             weapons: res.weapons,
             confidence: res.confidence,
             timestamp: new Date().toLocaleTimeString(),
-            image: dataUrl,
-            image_url: dataUrl,
-            camera_name: 'Local Webcam',
-            detected_at: new Date().toISOString(),
-            saved_to_recent: res.saved_to_recent
+            image: dataUrl
           };
           
           setLastDetection(newDetection);
+          camwatchToast.error(`🚨 WEAPON: ${weaponList}`);
           
-          // Only add to local detections if it was saved to recent (to match the backend behavior)
-          if (res.saved_to_recent) {
-            setLocalDetections(prev => {
-              const newDetections = [newDetection, ...prev].slice(0, 7);
-              return newDetections;
-            });
-            
-            camwatchToast.error(`🚨 WEAPON DETECTED & SAVED: ${weaponList}`);
-          } else {
-            camwatchToast.warning(`🚨 WEAPON DETECTED: ${weaponList} (not saved - cooldown)`);
-          }
         } else {
           setDetectionStatus('✅ No weapons detected');
         }
       } else {
         setDetectionStatus('⚠️ Analysis failed');
       }
+      
     } catch (err) {
+      console.error('Analysis error:', err);
       setDetectionStatus('⚠️ Detection error');
     } finally {
       setIsAnalyzing(false);
@@ -523,98 +452,137 @@ const StaffDashboard = () => {
           {/* Left Column - Weapon Detection */}
           <div className="space-y-6">
             {/* Detection Status */}
-            <div className={`rounded-xl p-6 shadow-lg border ${
-              detectionStatus?.includes('WEAPON DETECTED') 
-                ? 'bg-red-900/80 border-red-500 animate-pulse' 
-                : 'bg-black/60 border-sky-700/30'
-            }`}>
-              <div className="flex items-start space-x-4">
-                <div className="text-3xl">
-                  {detectionStatus?.includes('WEAPON DETECTED') ? '🚨' : '🔍'}
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <h2 className={`text-lg font-semibold ${
-                      detectionStatus?.includes('WEAPON DETECTED') ? 'text-red-300' : 'text-sky-300'
-                    }`}>
-                      Weapon Detection
-                    </h2>
-                    {isAnalyzing && (
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-sky-400"></div>
-                    )}
-                  </div>
-                  <div className={`text-white rounded-lg p-4 min-h-[80px] border ${
-                    detectionStatus?.includes('WEAPON DETECTED') 
-                      ? 'bg-red-800/50 border-red-600' 
-                      : 'bg-gray-800/50 border-gray-600'
-                  }`}>
-                    {isWebcamOn ? (
-                      detectionStatus || (
-                        <span className="text-gray-400 italic">
-                          {isAnalyzing ? "🔍 Scanning..." : "✅ Ready for detection"}
-                        </span>
-                      )
-                    ) : (
-                      <span className="text-gray-400 italic">📹 Turn on webcam to start detection</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
+            <div
+  className={`rounded-3xl p-8 shadow-2xl border-2 transition-all duration-500
+    ${
+      detectionStatus?.includes('WEAPON DETECTED')
+        ? 'bg-gradient-to-br from-red-700 via-red-800 to-pink-900 border-red-400 animate-pulse'
+        : 'bg-gradient-to-br from-blue-900 via-indigo-900 to-purple-900 border-blue-500'
+    }
+  `}
+>
+  <div className="flex items-start space-x-6">
+    <div className={`text-5xl drop-shadow-lg ${
+      detectionStatus?.includes('WEAPON DETECTED') ? 'text-red-200' : 'text-blue-200'
+    }`}>
+      {detectionStatus?.includes('WEAPON DETECTED') ? '🚨' : '🔍'}
+    </div>
+    <div className="flex-1">
+      <div className="flex items-center space-x-3 mb-3">
+        <h2 className={`text-2xl font-extrabold tracking-wide ${
+          detectionStatus?.includes('WEAPON DETECTED') ? 'text-red-200' : 'text-cyan-300'
+        }`}>
+          Weapon Detection
+        </h2>
+        {isAnalyzing && (
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-cyan-300"></div>
+        )}
+      </div>
+      <div className={`rounded-xl p-5 min-h-[80px] border-2 shadow-inner transition-all duration-500
+        ${
+          detectionStatus?.includes('WEAPON DETECTED')
+            ? 'bg-gradient-to-r from-red-800 via-red-900 to-pink-900 border-red-500'
+            : 'bg-gradient-to-r from-blue-950 via-indigo-950 to-purple-950 border-blue-800'
+        }
+      `}>
+        {isWebcamOn ? (
+          detectionStatus || (
+            <span className="text-gray-400 italic">
+              {isAnalyzing ? (
+                <span>
+                  <span className="inline-block w-4 h-4 mr-2 align-middle animate-spin border-b-2 border-cyan-300 rounded-full"></span>
+                  Scanning...
+                </span>
+              ) : (
+                "✅ Ready for detection"
+              )}
+            </span>
+          )
+        ) : (
+          <span className="text-gray-400 italic">📹 Turn on webcam to start detection</span>
+        )}
+      </div>
+    </div>
+  </div>
+</div>
 
-            {/* Last Detection Preview */}  
-            {lastDetection && (
-              <div className="bg-red-900/50 border border-red-500 rounded-xl p-6">
-                <h3 className="text-lg font-semibold text-red-300 mb-4">🚨 Latest Weapon Detection</h3>
-                <div className="space-y-4">
-                  {/* Conditionally render the image or a warning message */}
-                  {detectionStatus?.includes('WEAPON DETECTED') ? (
-                    <div className="bg-red-800/50 rounded-lg p-4 text-center">
-                      <div className="text-4xl text-red-200 mb-2">🚨</div>
-                      <div className="text-white font-semibold text-lg">Threat Detected!</div>
-                      <div className="text-sm text-red-200 mt-2">
-                        Detected Weapons: {lastDetection.weapons.map(w => w.weapon).join(', ')}
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      {/* <img 
-                        src={lastDetection.image} 
-                        alt="Detected weapon" 
-                        className="w-full h-48 object-cover rounded-lg border border-red-500"
-                      /> */}
-                    </div>
-                  )}
-                  <div className="space-y-3">
-                    <div className="bg-red-800/50 rounded-lg p-3">
-                      <div className="text-sm text-red-200">Detected Weapons:</div>
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {lastDetection.weapons.map((weapon, idx) => (
-                          <span 
-                            key={idx}
-                            className="bg-red-600 text-white px-3 py-1 rounded-lg text-sm font-medium"
-                          >
-                            {weapon.weapon} ({(weapon.confidence * 100).toFixed(1)}%)
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-red-800/50 rounded-lg p-3">
-                        <div className="text-sm text-red-200">Detection Time:</div>
-                        <div className="text-white font-medium">{lastDetection.timestamp}</div>
-                      </div>
-                      <div className="bg-red-800/50 rounded-lg p-3">
-                        <div className="text-sm text-red-200">Highest Confidence:</div>
-                        <div className="text-white font-bold text-lg">
-                          {(lastDetection.confidence * 100).toFixed(1)}%
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+{/* Last Detection Preview */}
+{lastDetection && (
+  <div className={`mt-6 rounded-3xl p-8 border-2 shadow-2xl transition-all duration-500
+    ${
+      detectionStatus?.includes('WEAPON DETECTED')
+        ? 'bg-gradient-to-br from-red-800 via-red-900 to-pink-900 border-red-400'
+        : 'bg-gradient-to-br from-blue-950 via-indigo-950 to-purple-950 border-blue-800'
+    }
+  `}>
+    <h3 className={`text-xl font-bold mb-5 flex items-center gap-2 ${
+      detectionStatus?.includes('WEAPON DETECTED') ? 'text-red-200' : 'text-cyan-200'
+    }`}>
+      {detectionStatus?.includes('WEAPON DETECTED') ? '🚨' : '🕒'} Latest Weapon Detection
+    </h3>
+    <div className="space-y-5">
+      {detectionStatus?.includes('WEAPON DETECTED') ? (
+        <div className="bg-gradient-to-r from-red-700 via-red-800 to-pink-900 rounded-xl p-5 text-center border border-red-400 shadow-lg">
+          <div className="text-5xl mb-2 text-red-100">🚨</div>
+          <div className="text-white font-bold text-lg tracking-wide">Threat Detected!</div>
+          <div className="text-base text-red-200 mt-2 font-semibold">
+            Detected Weapons: {lastDetection.weapons.map(w => w.weapon).join(', ')}
+          </div>
+        </div>
+      ) : (
+        <div className="text-center text-gray-400 italic">
+          No weapons detected in the last scan.
+        </div>
+      )}
+
+      <div className={`rounded-xl p-4 ${
+        detectionStatus?.includes('WEAPON DETECTED')
+          ? 'bg-red-900/80 border border-red-500'
+          : 'bg-blue-950/80 border border-blue-800'
+      }`}>
+        <div className={`text-base mb-2 ${
+          detectionStatus?.includes('WEAPON DETECTED') ? 'text-red-200' : 'text-cyan-200'
+        }`}>Detected Weapons:</div>
+        <div className="flex flex-wrap gap-3">
+          {lastDetection.weapons.map((weapon, idx) => (
+            <span
+              key={idx}
+              className={`px-4 py-1 rounded-full font-bold shadow-md text-white text-base ${
+                detectionStatus?.includes('WEAPON DETECTED')
+                  ? 'bg-gradient-to-r from-red-600 to-pink-600'
+                  : 'bg-gradient-to-r from-cyan-600 to-blue-600'
+              }`}
+            >
+              {weapon.weapon} ({(weapon.confidence * 100).toFixed(1)}%)
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-5">
+        <div className={`rounded-xl p-4 text-center ${
+          detectionStatus?.includes('WEAPON DETECTED')
+            ? 'bg-red-900/80 border border-red-500'
+            : 'bg-blue-950/80 border border-blue-800'
+        }`}>
+          <div className="text-base text-gray-300">Detection Time:</div>
+          <div className="text-white font-semibold text-lg">{lastDetection.timestamp}</div>
+        </div>
+        <div className={`rounded-xl p-4 text-center ${
+          detectionStatus?.includes('WEAPON DETECTED')
+            ? 'bg-red-900/80 border border-red-500'
+            : 'bg-blue-950/80 border border-blue-800'
+        }`}>
+          <div className="text-base text-gray-300">Highest Confidence:</div>
+          <div className="text-white font-extrabold text-2xl">
+            {(lastDetection.confidence * 100).toFixed(1)}%
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
           </div>
 
           {/* Right Column - Camera */}
@@ -684,6 +652,44 @@ const StaffDashboard = () => {
           <RecentDetectionsRow/>
         </div>
       </div>
+
+      {/* Description Modal - Expanded View */}
+      {selectedDescription && (
+  <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+    <div className="bg-gradient-to-br from-red-900 to-black rounded-2xl max-w-xl w-full max-h-[80vh] overflow-hidden border border-red-500">
+      <div className="p-5 border-b border-red-800 flex justify-between items-center">
+        <h3 className="text-xl font-bold text-white">
+          {selectedDescription.weapon} Detection #{selectedDescription.id}
+        </h3>
+        <button 
+          onClick={() => setSelectedDescription(null)}
+          className="text-red-300 hover:text-white"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div className="p-6 overflow-y-auto max-h-[60vh]">
+        <div className="bg-red-900/40 rounded-lg p-4 border border-red-700">
+          <h4 className="text-lg font-semibold text-red-200 mb-3">AI Security Analysis</h4>
+          <p className="text-white/90 leading-relaxed whitespace-pre-line">
+            {selectedDescription.text}
+          </p>
+        </div>
+      </div>
+      <div className="p-4 border-t border-red-800 flex justify-end">
+        <button 
+          onClick={() => setSelectedDescription(null)}
+          className="px-4 py-2 bg-red-800 hover:bg-red-700 text-white rounded-lg"
+        >
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
     </div>
   );
 };

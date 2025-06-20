@@ -16,6 +16,7 @@ import torch
 import time
 import json
 import requests
+import gc
 
 load_dotenv()
 
@@ -26,6 +27,10 @@ thread_pool = ThreadPoolExecutor(max_workers=2)
 
 # Global model variable that persists across requests
 _MODEL = None
+
+# Track model loading time
+_MODEL_LOAD_TIME = 0
+_MODEL_KEEP_ALIVE_SECONDS = 3600  # 1 hour
 
 DETECTION_IMAGES_DIR = None
 RECENT_DETECTIONS_STORE = []  # In-memory store for recent detections
@@ -41,16 +46,34 @@ LAST_LLAMA_CALL = 0
 LLAMA_CALL_COOLDOWN = 5.0  # 5 seconds between LLaMA calls
 
 def get_yolo_model():
-    """Get cached YOLO model - load only once with optimized settings"""
-    global _MODEL
-    if _MODEL is None:
-        # Load model with appropriate weights
-        model_path = r'H:\Code\Final Year Projectsss\CamWatch\code\runs\detect\train3\weights\best.pt'
-        _MODEL = YOLO(model_path)
+    """Get cached YOLO model with better persistence"""
+    global _MODEL, _MODEL_LOAD_TIME
+    
+    current_time = time.time()
+    
+    # Check if model exists and is recent
+    if _MODEL is not None:
+        # Reset model timeout on every call
+        _MODEL_LOAD_TIME = current_time
+        return _MODEL
         
-        # Force model to CPU or CUDA depending on availability
-        device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-        _MODEL.to(device)
+    current_app.logger.info("Loading YOLO model...")
+    
+    # Try to force garbage collection before loading model
+    gc.collect()
+    
+    # Load model with appropriate weights
+    model_path = r'H:\Code\Final Year Projectsss\CamWatch\code\runs\detect\train3\weights\best.pt'
+    _MODEL = YOLO(model_path)
+    
+    # Force model to CPU or CUDA depending on availability  
+    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+    _MODEL.to(device)
+    
+    # Set load time
+    _MODEL_LOAD_TIME = current_time
+    
+    current_app.logger.info(f"YOLO model loaded successfully on {device}")
     return _MODEL
 
 # Weapon classes from your trained model
@@ -66,24 +89,23 @@ WEAPON_CLASSES = {
     8: 'sword'
 }
 
-# Update the CLASS_THRESHOLDS - make sword much stricter and pistol more sensitive
+# Make thresholds simpler and more reliable:
 CLASS_THRESHOLDS = {
-    0: 0.30,  # automatic rifle
-    1: 0.30,  # granade launcher
-    2: 0.40,  # knife - stricter
-    3: 0.30,  # machine gun
-    4: 0.20,  # pistol - MORE SENSITIVE (this should catch pistols better)
-    5: 0.35,  # rocket launcher
-    6: 0.30,  # shotgun
-    7: 0.35,  # sniper
-    8: 0.75,  # sword - MUCH STRICTER (was 0.60, now 0.75)
+    0: 0.25,  # automatic rifle
+    1: 0.25,  # granade launcher
+    2: 0.80,  # knife - VERY STRICT
+    3: 0.25,  # machine gun
+    4: 0.20,  # pistol - sensitive
+    5: 0.30,  # rocket launcher
+    6: 0.25,  # shotgun
+    7: 0.30,  # sniper
+    8: 0.85,  # sword - VERY STRICT
 }
 
-# Add weapon-specific confidence boost logic
 WEAPON_CONFIDENCE_BOOSTS = {
-    4: 1.20,  # pistol gets 20% confidence boost
-    2: 0.90,  # knife gets slight penalty
-    8: 0.80,  # sword gets significant penalty
+    4: 1.15,  # pistol gets 15% boost
+    2: 0.70,  # knife gets penalty
+    8: 0.60,  # sword gets heavy penalty
 }
 
 RECENT_DETECTIONS = {}  # Store recent detections for each class
@@ -303,110 +325,66 @@ def toggle_camera_status(current_user, camera_id):
         if conn:
             conn.close()
 
-# Update the analyze_weapon_detection function
+# Replace analyze_weapon_detection with this SIMPLE version:
 def analyze_weapon_detection(results, image_data):
-    global RECENT_DETECTIONS, LAST_DETECTION_SAVE_TIME
+    global LAST_DETECTION_SAVE_TIME
     
     detected_weapons = []
-    weapon_detected = False
-    highest_confidence = 0.0
-    
     current_time = time.time()
     
-    # Clean up old entries (older than 10 seconds)
-    for class_id in list(RECENT_DETECTIONS.keys()):
-        RECENT_DETECTIONS[class_id] = [d for d in RECENT_DETECTIONS[class_id] 
-                                      if current_time - d['time'] < 10]
-        if not RECENT_DETECTIONS[class_id]:
-            del RECENT_DETECTIONS[class_id]
+    current_app.logger.info(f"Analyzing {len(results)} detection results")
     
-    # Collect all detections first
-    all_detections = []
-    
+    # Simple detection processing - NO COMPLEX LOGIC
     for result in results:
         if result.boxes is not None:
+            current_app.logger.info(f"Found {len(result.boxes)} detections")
+            
             for box in result.boxes:
-                class_id = int(box.cls)
-                confidence = float(box.conf)
+                class_id = int(box.cls.item())
+                confidence = float(box.conf.item())
+                
+                current_app.logger.info(f"Detection: class_id={class_id}, confidence={confidence:.3f}")
                 
                 if class_id in WEAPON_CLASSES:
-                    # Apply weapon-specific confidence adjustments
-                    adjusted_confidence = confidence * WEAPON_CONFIDENCE_BOOSTS.get(class_id, 1.0)
+                    weapon_name = WEAPON_CLASSES[class_id]
+                    threshold = CLASS_THRESHOLDS.get(class_id, 0.25)
+                    boost = WEAPON_CONFIDENCE_BOOSTS.get(class_id, 1.0)
                     
-                    all_detections.append({
-                        'class_id': class_id,
-                        'original_confidence': confidence,
-                        'adjusted_confidence': adjusted_confidence,
-                        'weapon_name': WEAPON_CLASSES[class_id],
-                        'box': box
-                    })
+                    # Apply boost
+                    adjusted_confidence = confidence * boost
+                    
+                    current_app.logger.info(f"Weapon {weapon_name}: {confidence:.3f} -> {adjusted_confidence:.3f} (threshold: {threshold})")
+                    
+                    # Simple threshold check
+                    if adjusted_confidence >= threshold:
+                        detected_weapons.append({
+                            'weapon': weapon_name,
+                            'confidence': round(adjusted_confidence, 3),
+                            'original_confidence': round(confidence, 3)
+                        })
+                        current_app.logger.info(f"✅ DETECTED: {weapon_name} ({adjusted_confidence:.3f})")
     
-    # Sort by adjusted confidence (highest first)
-    all_detections.sort(key=lambda x: x['adjusted_confidence'], reverse=True)
+    # Remove duplicates (keep highest confidence)
+    unique_weapons = {}
+    for weapon in detected_weapons:
+        weapon_name = weapon['weapon']
+        if weapon_name not in unique_weapons or weapon['confidence'] > unique_weapons[weapon_name]['confidence']:
+            unique_weapons[weapon_name] = weapon
     
-    # Process detections with improved logic
-    processed_weapons = set()  # Avoid duplicate weapon types
+    final_weapons = list(unique_weapons.values())
     
-    for detection in all_detections:
-        class_id = detection['class_id']
-        confidence = detection['adjusted_confidence']
-        weapon_name = detection['weapon_name']
+    if final_weapons:
+        highest_confidence = max(w['confidence'] for w in final_weapons)
         
-        # Skip if we already have this weapon type with higher confidence
-        if weapon_name in processed_weapons:
-            continue
-            
-        # Check threshold
-        if confidence >= CLASS_THRESHOLDS.get(class_id, 0.25):
-            # Special logic for commonly confused weapons
-            if class_id == 8 and confidence < 0.80:  # sword
-                # Check if there's a pistol detection with reasonable confidence
-                pistol_detections = [d for d in all_detections if d['class_id'] == 4 and d['adjusted_confidence'] > 0.20]
-                if pistol_detections:
-                    current_app.logger.info(f"Skipping sword detection (conf: {confidence:.3f}) - pistol found with conf: {pistol_detections[0]['adjusted_confidence']:.3f}")
-                    continue
-            
-            if class_id not in RECENT_DETECTIONS:
-                RECENT_DETECTIONS[class_id] = []
-            
-            RECENT_DETECTIONS[class_id].append({
-                'confidence': confidence,
-                'time': current_time
-            })
-            
-            recent_count = len(RECENT_DETECTIONS[class_id])
-            
-            # Apply temporal consistency boost
-            if recent_count > 1:
-                avg_conf = sum(d['confidence'] for d in RECENT_DETECTIONS[class_id]) / recent_count
-                boost_factor = min(1.0 + (recent_count * 0.05), 1.2)
-                confidence = min(confidence * boost_factor, 0.99)
-            
-            weapon_detected = True
-            highest_confidence = max(highest_confidence, confidence)
-            processed_weapons.add(weapon_name)
-            
-            detected_weapons.append({
-                'weapon': weapon_name,
-                'confidence': round(confidence, 3),
-                'consistent_detections': recent_count,
-                'original_confidence': round(detection['original_confidence'], 3)
-            })
-            
-            current_app.logger.info(f"Detected {weapon_name}: orig={detection['original_confidence']:.3f}, adj={confidence:.3f}, threshold={CLASS_THRESHOLDS.get(class_id, 0.25)}")
-    
-    if weapon_detected:
-        # Check if enough time has passed since last save (3 seconds)
+        # Simple save logic - save every 3 seconds
         time_since_last_save = current_time - LAST_DETECTION_SAVE_TIME
-        should_save_to_recent = time_since_last_save >= DETECTION_SAVE_COOLDOWN
+        should_save = time_since_last_save >= DETECTION_SAVE_COOLDOWN
         
         detection_id = None
-        
-        if should_save_to_recent:
-            # Store detection image only if cooldown period has passed
+        if should_save:
             detection_info = {
-                'id': int(current_time * 1000),  # Unique ID based on timestamp
-                'weapons': detected_weapons,
+                'id': int(current_time * 1000),
+                'weapons': final_weapons,
                 'confidence': highest_confidence
             }
             
@@ -414,19 +392,16 @@ def analyze_weapon_detection(results, image_data):
             if stored_detection:
                 detection_id = detection_info['id']
                 LAST_DETECTION_SAVE_TIME = current_time
-                current_app.logger.info(f"Saved detection to recent store (cooldown: {time_since_last_save:.1f}s)")
-        else:
-            current_app.logger.info(f"Skipped saving to recent store (cooldown: {time_since_last_save:.1f}s < {DETECTION_SAVE_COOLDOWN}s)")
+                current_app.logger.info(f"✅ Saved detection {detection_id}")
         
         return jsonify({
             "success": True,
             "weapon_detected": True,
-            "weapons": detected_weapons,
+            "weapons": final_weapons,
             "confidence": highest_confidence,
             "detection_id": detection_id,
-            "saved_to_recent": should_save_to_recent,
-            "time_until_next_save": max(0, DETECTION_SAVE_COOLDOWN - time_since_last_save),
-            "message": f"🚨 WEAPON DETECTED: {', '.join([w['weapon'] for w in detected_weapons])}"
+            "saved_to_recent": should_save,
+            "message": f"🚨 WEAPON DETECTED: {', '.join([w['weapon'] for w in final_weapons])}"
         }), 200
     else:
         return jsonify({
@@ -434,14 +409,16 @@ def analyze_weapon_detection(results, image_data):
             "weapon_detected": False,
             "weapons": [],
             "confidence": 0,
-            "saved_to_recent": False,
             "message": "✅ No weapons detected"
         }), 200
 
-# Update the analyze_frame_route to pass image_data correctly
+# Update the analyze_frame_route to be simpler:
 @dashboard_bp.route('/analyze-frame', methods=['POST'])
 @token_required
 def analyze_frame_route(current_user):
+    # Add this to keep model loaded persistently
+    model = get_yolo_model()  # This will refresh the model timeout
+    
     data = request.get_json()
 
     if not data or 'image_b64' not in data:
@@ -458,32 +435,27 @@ def analyze_frame_route(current_user):
         if image is None:
             return jsonify({"success": False, "message": "Invalid image data."}), 400
 
-        # Resize to optimal YOLO detection size (multiple of 32)
-        image = cv2.resize(image, (416, 416))
+        current_app.logger.info(f"Received image: {image.shape}")
 
-        # Apply image enhancements
-        image = cv2.normalize(image, None, 0, 255, cv2.NORM_MINMAX)
+        # Resize to 640x640 (standard YOLO size)
+        image = cv2.resize(image, (640, 640))
+        
+        # Convert to RGB for YOLO
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-        # Optimize contrast
-        alpha = 1.2  # contrast control
-        beta = 10    # brightness control
-        image = cv2.convertScaleAbs(image, alpha=alpha, beta=beta)
-
-        # Run YOLO detection with optimized parameters
+        # Run detection with good parameters
         model = get_yolo_model()
-
-        results = model(image,
-                      conf=0.20,        # Lower base threshold
-                      iou=0.45,         # Intersection over Union threshold
-                      max_det=20,       # Maximum detections
+        results = model(image_rgb,
+                      conf=0.20,        # Base confidence
+                      iou=0.45,         # IoU threshold
+                      max_det=15,       # Max detections
                       verbose=False)
 
-        # Analyze results (pass original image_data for storage)
         return analyze_weapon_detection(results, image_data)
 
     except Exception as e:
         current_app.logger.error(f"Analysis error: {e}")
-        return jsonify({"success": False, "message": f"Analysis error: {e}"}), 500
+        return jsonify({"success": False, "message": f"Analysis error: {str(e)}"}), 500
 
 # Fix the recent detections endpoint
 @dashboard_bp.route('/recent-detections', methods=['GET'])
