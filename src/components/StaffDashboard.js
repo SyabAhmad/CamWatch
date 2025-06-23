@@ -26,7 +26,7 @@ const StaffDashboard = () => {
 
   // State to hold detections loaded from local storage
   const [recentLocalDetections, setRecentLocalDetections] = useState([]);
-  const MAX_LOCAL_DETECTIONS = 10; // Keep only the last 10 in local storage
+  const MAX_LOCAL_DETECTIONS = 1; // Keep only the last 10 in local storage
 
   // State for generating description button
   const [generatingDescription, setGeneratingDescription] = useState({});
@@ -280,6 +280,19 @@ const StaffDashboard = () => {
       }
     }
   };
+
+  // New function to clear detections
+  const clearRecentDetections = () => {
+    try {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+      setRecentLocalDetections([]);
+      console.log('🗑️ Cleared all detections from local storage.');
+      camwatchToast.info('Recent detections cleared.');
+    } catch (error) {
+      console.error('❌ Error clearing detections from local storage:', error);
+      camwatchToast.error('Failed to clear detections.');
+    }
+  };
   // --- END LOCAL STORAGE FUNCTIONS ---
 
 
@@ -422,6 +435,11 @@ const StaffDashboard = () => {
         detectionToDescribe.timestamp // Pass timestamp
       );
 
+      // --- ADD CONSOLE LOG HERE ---
+      console.log('Raw description response from backend:', response);
+      // --- END CONSOLE LOG ---
+
+
       if (response.success && response.description) {
         console.log(`Description generated for ${detectionId}`);
         // Update the detection in local storage
@@ -429,7 +447,7 @@ const StaffDashboard = () => {
           det.id === detectionId ? { ...det, description: response.description } : det
         );
         saveDetectionsToLocalStorage(updatedDetections); // This also updates state
-        camwatchToast.success('Description generated!');
+        camwatchToast.info('Description generated!');
       } else {
         console.error('Failed to generate description:', response.message);
         camwatchToast.error(response.message || 'Failed to generate description.');
@@ -482,28 +500,134 @@ const StaffDashboard = () => {
     logout();
   };
 
+  // Helper function to format basic markdown (bold, lists, simple line breaks)
+  const formatMarkdownDescription = (text) => {
+    if (!text) return '';
+
+    console.log('Formatting raw text:', text);
+
+    let html = text;
+
+    // Replace **Text:** with <strong>Text:</strong>
+    html = html.replace(/\*\*\s*(.*?):\s*\*\*/g, '<strong>$1:</strong>');
+
+    // Replace **Text** (without colon) with <strong>Text</strong>
+    html = html.replace(/\*\*\s*(.*?)\s*\*\*/g, '<strong>$1</strong>');
+
+    // Split into lines
+    const lines = html.split('\n');
+    let processedLines = [];
+    let inList = false;
+    let listType = null; // 'ul' or 'ol'
+    let inCodeBlock = false; // Track if inside a code block
+
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+
+      // Check for code block start/end
+      if (trimmedLine.startsWith('```')) {
+        if (inCodeBlock) {
+          processedLines.push('</code></pre>');
+          inCodeBlock = false;
+        } else {
+          // Optional: extract language identifier
+          const lang = trimmedLine.substring(3).trim();
+          processedLines.push(`<pre><code${lang ? ` class="language-${lang}"` : ''}>`);
+          inCodeBlock = true;
+        }
+        continue; // Skip processing this line further
+      }
+
+      if (inCodeBlock) {
+        // Inside a code block, just add the line content (preserving leading spaces)
+        // Need to escape HTML entities like <, >, &
+        processedLines.push(line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '\n'); // Add original line break
+      } else if (trimmedLine.startsWith('- ')) {
+        if (!inList || listType !== 'ul') {
+          if (inList) processedLines.push(`</${listType}>`);
+          processedLines.push('<ul>');
+          inList = true;
+          listType = 'ul';
+        }
+        const listItemContent = trimmedLine.substring(2).trim().replace(/\*\*\s*(.*?)\s*\*\*/g, '<strong>$1</strong>');
+        processedLines.push(`<li>${listItemContent}</li>`);
+      } else if (/^\d+\.\s/.test(trimmedLine)) {
+        if (!inList || listType !== 'ol') {
+          if (inList) processedLines.push(`</${listType}>`);
+          processedLines.push('<ol>');
+          inList = true;
+          listType = 'ol';
+        }
+        const listItemContent = trimmedLine.replace(/^\d+\.\s/, '').trim().replace(/\*\*\s*(.*?)\s*\*\*/g, '<strong>$1</strong>');
+        processedLines.push(`<li>${listItemContent}</li>`);
+      } else {
+        if (inList) {
+          processedLines.push(`</${listType}>`);
+          inList = false;
+          listType = null;
+        }
+        if (trimmedLine !== '') {
+           const paragraphContent = trimmedLine.replace(/\*\*\s*(.*?)\s*\*\*/g, '<strong>$1</strong>');
+           processedLines.push(`${paragraphContent}<br/>`);
+        } else {
+           // Handle consecutive blank lines by adding multiple <br/>
+           if (processedLines.length > 0 && processedLines[processedLines.length - 1].endsWith('<br/>')) {
+             processedLines.push('<br/>');
+           } else if (processedLines.length > 0 && processedLines[processedLines.length - 1] !== '') {
+             processedLines.push('<br/>');
+           } else if (processedLines.length === 0) {
+             processedLines.push('<br/>');
+           }
+        }
+      }
+    }
+
+    // Close any open list or code block at the end
+    if (inList) {
+      processedLines.push(`</${listType}>`);
+    }
+    if (inCodeBlock) {
+       processedLines.push('</code></pre>');
+    }
+
+
+    const finalHtml = processedLines.join('');
+    console.log('Formatted HTML output:', finalHtml);
+    return finalHtml;
+  };
+
+
   // --- UI COMPONENTS ---
   // Keep the ExpandableDescription component here or move to a separate file
   const ExpandableDescription = ({ description }) => {
     const [expanded, setExpanded] = useState(false);
-    const MAX_LENGTH = 120; // Characters to show before "Read more"
-    
+    const MAX_LENGTH = 300; // Increase max length as HTML might change character count
+
     if (!description) return (
       <div className="bg-red-900/30 rounded-lg p-3 border border-red-600">
         <p className="text-red-300 text-sm italic">No description generated yet</p>
       </div>
     );
-    
+
+    // Check if the *original* description is long enough to need expanding
     const isLongDescription = description.length > MAX_LENGTH;
-    
+
+    // Determine the content to display based on expanded state
+    // Apply formatting to the relevant portion of the description
+    const displayContent = expanded || !isLongDescription
+      ? formatMarkdownDescription(description)
+      : formatMarkdownDescription(description.substring(0, MAX_LENGTH).trim()) + '...'; // Apply formatting to truncated text
+
     return (
-      <div className="bg-red-900/30 rounded-lg p-3 border border-red-600 shadow-inner">
-        <p className="text-white text-sm leading-relaxed whitespace-pre-line"> {/* Added whitespace-pre-line */}
-          {expanded || !isLongDescription ? description : `${description.substring(0, MAX_LENGTH).trim()}...`}
-        </p>
-        
+      <div className="bg-red-900/30 rounded-lg p-3 border border-red-600 shadow-inner text-left"> {/* Added text-left */}
+        {/* Use dangerouslySetInnerHTML to render the HTML */}
+        <div
+          className="text-white text-sm leading-relaxed" // Removed whitespace-pre-line
+          dangerouslySetInnerHTML={{ __html: displayContent }}
+        />
+
         {isLongDescription && (
-          <button 
+          <button
             onClick={() => setExpanded(!expanded)}
             className="mt-2 px-2 py-0.5 bg-red-700/70 hover:bg-red-600/70 text-white rounded text-xs font-medium flex items-center gap-1 transition-colors"
           >
@@ -811,12 +935,23 @@ const StaffDashboard = () => {
               🔥 Recent Weapon Detections
               <span className="text-sm text-gray-400 font-normal">(Last {MAX_LOCAL_DETECTIONS} detections)</span>
             </h3>
-            <button 
-              onClick={loadDetectionsFromLocalStorage} // Refresh from local storage
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition duration-200 text-sm font-medium"
-            >
-              🔄 Refresh
-            </button>
+            <div className="flex items-center gap-3"> {/* Added a div to group buttons */}
+              <button
+                onClick={loadDetectionsFromLocalStorage} // Refresh from local storage
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition duration-200 text-sm font-medium"
+              >
+                🔄 Refresh
+              </button>
+              {/* New Clear Button */}
+              {recentLocalDetections.length > 0 && ( // Only show if there are detections
+                <button
+                  onClick={clearRecentDetections}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition duration-200 text-sm font-medium"
+                >
+                  🗑️ Clear All
+                </button>
+              )}
+            </div>
           </div>
 
           {recentLocalDetections.length === 0 ? (
@@ -902,7 +1037,6 @@ const StaffDashboard = () => {
                     <div className="flex-grow"> {/* Allow description area to grow */}
                       <div className="text-sm text-red-200 mb-2">AI Description:</div>
                       {/* Use the local ExpandableDescription component */}
-                      {/* ExpandableDescription component already has good styling */}
                       <ExpandableDescription description={detection.description} />
                     </div>
 
@@ -939,9 +1073,9 @@ const StaffDashboard = () => {
     <div className="bg-gradient-to-br from-red-900 to-black rounded-2xl max-w-xl w-full max-h-[80vh] overflow-hidden border border-red-500">
       <div className="p-5 border-b border-red-800 flex justify-between items-center">
         <h3 className="text-xl font-bold text-white">
-          {selectedDescription.weapon} Detection #{selectedDescription.id}
+          {selectedDescription.weapon || 'Weapon'} Detection #{selectedDescription.id}
         </h3>
-        <button 
+        <button
           onClick={() => setSelectedDescription(null)}
           className="text-red-300 hover:text-white"
         >
@@ -951,15 +1085,17 @@ const StaffDashboard = () => {
         </button>
       </div>
       <div className="p-6 overflow-y-auto max-h-[60vh]">
-        <div className="bg-red-900/40 rounded-lg p-4 border border-red-700">
+        <div className="bg-red-900/40 rounded-lg p-4 border border-red-700 text-left"> {/* Added text-left */}
           <h4 className="text-lg font-semibold text-red-200 mb-3">AI Security Analysis</h4>
-          <p className="text-white/90 leading-relaxed whitespace-pre-line">
-            {selectedDescription.text}
-          </p>
+          {/* Use dangerouslySetInnerHTML and formatMarkdownDescription */}
+          <div
+            className="text-white/90 leading-relaxed" // Removed whitespace-pre-line
+            dangerouslySetInnerHTML={{ __html: formatMarkdownDescription(selectedDescription.text) }}
+          />
         </div>
       </div>
       <div className="p-4 border-t border-red-800 flex justify-end">
-        <button 
+        <button
           onClick={() => setSelectedDescription(null)}
           className="px-4 py-2 bg-red-800 hover:bg-red-700 text-white rounded-lg"
         >

@@ -102,7 +102,7 @@ CLASS_THRESHOLDS = {
     1: 0.25,  # granade launcher
     2: 0.70,  # knife - VERY STRICT
     3: 0.25,  # machine gun
-    4: 0.20,  # pistol - sensitive
+    4: 0.30,  # pistol - sensitive
     5: 0.30,  # rocket launcher
     6: 0.25,  # shotgun
     7: 0.30,  # sniper
@@ -145,7 +145,7 @@ def store_detection_image(image_data, detection_info):
         server_url = os.getenv('SERVER_URL', 'http://localhost:5000')
         image_url = f"{server_url}/static/recent_detections/{filename}"
         
-        current_app.logger.info(f"Stored detection image: {filename}")
+        current_app.logger.info(f"Stored detection image: {filename} at {image_path}") # Added path to log
         return image_path, image_url # Return both path and URL
         
     except Exception as e:
@@ -158,88 +158,98 @@ def find_image_path_by_id(detection_id):
     init_detection_storage()
     # Search for files matching the pattern detection_ID.jpg
     search_pattern = os.path.join(DETECTION_IMAGES_DIR, f"detection_{detection_id}.jpg")
+    current_app.logger.info(f"Searching for image with pattern: {search_pattern}") # Log search pattern
     files = glob.glob(search_pattern)
     
     if files:
+        current_app.logger.info(f"Found image file(s): {files}") # Log found files
         # Assuming the ID is unique, there should be only one match
         return files[0]
+    current_app.logger.warning(f"No image file found for detection ID: {detection_id} with pattern {search_pattern}") # Log if not found
     return None
 
 
 def get_llama_description(image_path, weapons, timestamp):
-    """Get short markdown description from LLaMA.cpp for the detection"""
-    # Ensure image_path exists before proceeding
-    if not image_path or not os.path.exists(image_path):
-        current_app.logger.error(f"Image file not found for LLaMA description: {image_path}")
-        weapon_list = ", ".join([w['weapon'] for w in weapons])
-        return f"**ALERT**: {weapon_list} detected. Image not available for detailed analysis."
-
+    """Get description from LLaMA model based on image and detection info"""
     try:
-        # Prepare shorter, more focused prompt with markdown formatting
-        weapon_list = ", ".join([w['weapon'] for w in weapons])
-        highest_conf = max([w['confidence'] for w in weapons]) * 100
+        # Construct a more detailed prompt for LLaMA
+        weapon_list_str = ', '.join([f"{w['weapon']} at {w['confidence']:.1f}% confidence" for w in weapons])
+        
+        # Refined prompt to encourage structured and detailed output
+        prompt = f"""
+Analyze the security implications of the following weapon detection.
+Detected objects: {weapon_list_str}
+Timestamp: {timestamp}
 
-        # Read image data to potentially send to LLaMA if it supports image input
-        # For now, we'll just use the text prompt
-        # with open(image_path, 'rb') as f:
-        #     image_bytes = f.read()
-        # image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+Provide a detailed security analysis in Markdown format.
+Include the following sections:
+**Security Alert:** [Brief summary of the threat]
+**Subject:** [Detected weapon(s) and confidence levels]
+**Action:**
+1. **Identify Potential Threat:** [Explain the potential danger of the detected weapon(s)]
+2. **Assess Threat Level:** [Estimate the severity based on weapon type and confidence]
+3. **Actions to Take:** [Suggest immediate steps for security personnel]
+4. **Conclusion:** [Summarize the situation and next steps]
 
-        # --- MODIFIED PROMPT ---
-        prompt = f"""Act as a highly experienced security detective analyzing a critical threat.
-Based on the image, describe the situation for an urgent security report.
-Focus on identifying the weapon ({weapon_list} detected at {highest_conf:.0f}% confidence), the subject's actions, posture, and any potential immediate threat indicators.
-Use clear, concise language suitable for a security briefing.
-Start with a strong security alert statement.
-Provide a detailed analysis, not less than 100 words, highlighting the potential danger.
-Format the report using markdown for readability.
+**Analysis:**
+- **Detected Weapon(s):** [Detailed description of the weapon(s)]
+- **Confidence Level:** [Explanation of the confidence score]
+- **Potential Threat:** [Elaborate on the potential impact]
+- **Actions to Take:** [Detailed breakdown of recommended actions]
+
+Ensure the response is well-structured using Markdown bolding, lists, and clear headings.
 """
-        # --- END MODIFIED PROMPT ---
+        
+        current_app.logger.info(f"Sending prompt to LLaMA: {prompt}")
 
-        # Faster LLaMA.cpp API call with reduced parameters
-        llama_response = requests.post(
-            'http://localhost:8080/completion',
-            json={
-                'prompt': prompt,
-                'n_predict': 200,     # Increased prediction length for more detail
-                'temperature': 0.3,   # Slightly higher temp for more varied descriptions
-                'top_p': 0.9,
-                'stop': ['\n\n\n', '---', '##', 'Report End'],  # Stop at section breaks or explicit end
-                'stream': False
-            },
-            timeout=20  # Increased timeout slightly
-        )
+        # --- Placeholder LLaMA Call (Replace with your actual API call) ---
+        # This is where you would integrate with your LLaMA server API
+        # Example using a hypothetical requests call:
+        # import requests
+        # llama_api_url = os.getenv('LLAMA_API_URL', 'http://localhost:11434/api/generate') # Example URL
+        # try:
+        #     response = requests.post(llama_api_url, json={
+        #         "model": "your-llama-model-name", # e.g., "llama3"
+        #         "prompt": prompt,
+        #         "stream": False # Set to False for a single response
+        #     })
+        #     response.raise_for_status() # Raise an exception for bad status codes
+        #     llama_response_data = response.json()
+        #     llama_response_text = llama_response_data.get('response', '').strip()
+        #     current_app.logger.info(f"Raw LLaMA response: {llama_response_text}")
+        # except requests.exceptions.RequestException as e:
+        #     current_app.logger.error(f"Error calling LLaMA server: {e}")
+        #     return "Error: Could not get description from AI."
+        # --- End Placeholder ---
 
-        if llama_response.status_code == 200:
-            result = llama_response.json()
-            description = result.get('content', '').strip()
+        # --- Using a Mock/Example Response for Testing ---
+        # REMOVE THIS BLOCK ONCE YOUR LLAMA API CALL IS WORKING
+        llama_response_text = f"""
+**Security Alert:** Potential weapon threat detected.
+**Subject:** {weapon_list_str}
+**Action:**
+1. **Identify Potential Threat:** The presence of {', '.join([w['weapon'] for w in weapons])} indicates a potential immediate danger.
+2. **Assess Threat Level:** Threat level is high due to the nature of the detected weapon(s).
+3. **Actions to Take:** Immediately notify security personnel and isolate the area. Do not approach the subject.
+4. **Conclusion:** A confirmed weapon detection requires urgent response.
 
-            # Clean up and ensure proper markdown
-            if description:
-                # Ensure it starts with proper markdown if not
-                if not any(description.startswith(marker) for marker in ['#', '*', '-', '**', '>']):
-                     description = f"**SECURITY THREAT ANALYSIS**: {weapon_list} detected\n\n{description}"
+**Analysis:**
+- **Detected Weapon(s):** The system identified {', '.join([w['weapon'] for w in weapons])}. These are dangerous items.
+- **Confidence Level:** The detection confidence is {max([w['confidence'] for w in weapons]):.1f}%. This indicates a strong likelihood of a real threat.
+- **Potential Threat:** Individuals possessing such weapons pose a significant risk of violence or attack.
+- **Actions to Take:**
+  - Initiate lockdown procedures if applicable.
+  - Monitor the subject remotely if possible.
+  - Await arrival of trained security or law enforcement.
+"""
+        # --- End Mock Response ---
 
-                # Limit length but preserve markdown structure
-                # Frontend will handle expandable view
-                # if len(description) > 200:
-                #     description = description[:197] + "..."
-                return description
-            else:
-                return f"**HIGH ALERT**: {weapon_list} detected\n\n*Immediate security response required*"
-        else:
-            current_app.logger.error(f"LLaMA server error: {llama_response.status_code} - {llama_response.text}")
-            return f"**ALERT**: {weapon_list} detected\n\n*Security team notified*"
 
-    except requests.exceptions.Timeout:
-        current_app.logger.error("LLaMA server timeout")
-        return f"**URGENT**: {weapon_list} detected\n\n*Response needed immediately*"
-    except requests.exceptions.ConnectionError:
-        current_app.logger.error("Cannot connect to LLaMA server. Is LLaMA.cpp running?")
-        return f"**THREAT**: {weapon_list} identified\n\n*LLaMA server offline - manual analysis required*"
+        return llama_response_text
+
     except Exception as e:
-        current_app.logger.error(f"Error getting LLaMA description: {e}")
-        return f"**WARNING**: {weapon_list} detected\n\n*Manual verification required*"
+        current_app.logger.error(f"Unexpected error in get_llama_description: {e}")
+        return "Error: An unexpected error occurred during description generation."
 
 def get_cached_or_generate_description(detection_id, image_path, weapons, timestamp):
     """Get description with caching and rate limiting"""
@@ -491,7 +501,6 @@ def analyze_frame_route(current_user):
 @token_required
 def describe_detection(current_user, detection_id):
     """Generate LLaMA description for a specific detection"""
-    # We no longer rely on RECENT_DETECTIONS_STORE here
     
     try:
         current_app.logger.info(f"Request to generate description for detection ID: {detection_id}")
@@ -499,9 +508,15 @@ def describe_detection(current_user, detection_id):
         # Find the image path based on the ID
         image_path = find_image_path_by_id(detection_id)
         
-        if not image_path or not os.path.exists(image_path):
-             current_app.logger.error(f"Image not found for description generation: ID {detection_id}, Path {image_path}")
+        if not image_path: # Check if image_path is None
+             current_app.logger.error(f"Image path is None for description generation: ID {detection_id}")
              return jsonify({"success": False, "message": "Detection image not found."}), 404
+
+        if not os.path.exists(image_path): # Explicitly check if the file exists
+             current_app.logger.error(f"Image file does not exist at path: {image_path} for ID {detection_id}")
+             return jsonify({"success": False, "message": "Detection image file missing."}), 404
+
+        current_app.logger.info(f"Image found at {image_path} for description generation.") # Log success
 
         # We need weapon info to pass to get_llama_description
         # This is a limitation since backend doesn't store detection details anymore.
