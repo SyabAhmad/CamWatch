@@ -225,6 +225,27 @@ class ApiService {
       method: 'POST',
     });
   }
+
+  async generateDetectionDescription(detectionId, weapons, timestamp) { // Add weapons and timestamp parameters
+    try {
+      const response = await fetch(`${this.baseURL}/dashboard/detection/${detectionId}/describe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`, // Assuming token is stored here
+        },
+        body: JSON.stringify({ // Include weapons and timestamp in the body
+          weapons: weapons,
+          timestamp: timestamp
+        }),
+      });
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('API Error generating detection description:', error);
+      throw error; // Re-throw to be caught by the component
+    }
+  }
 }
 
 const apiService = new ApiService();
